@@ -6,6 +6,7 @@ interface NewsFeedProps {
   isLoading: boolean;
   error: string | null;
   activeCategoryLabel: string;
+  activeCountryLabel: string;
   searchQuery: string;
   onRetry: () => void;
 }
@@ -15,6 +16,7 @@ export function NewsFeed({
   isLoading,
   error,
   activeCategoryLabel,
+  activeCountryLabel,
   searchQuery,
   onRetry,
 }: NewsFeedProps) {
@@ -25,6 +27,9 @@ export function NewsFeed({
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6 flex flex-wrap items-center gap-3">
+          <span className="px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-sm font-semibold">
+            Country: {activeCountryLabel}
+          </span>
           <span className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-sm font-semibold">
             Category: {activeCategoryLabel}
           </span>

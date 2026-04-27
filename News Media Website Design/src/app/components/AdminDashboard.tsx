@@ -2,6 +2,18 @@ import { useState } from 'react';
 import { Plus, Edit, Trash2, Save, X, FileText, Image as ImageIcon, Tag } from 'lucide-react';
 import { Article } from './NewsCard';
 
+function slugify(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+
+  return normalized || 'story';
+}
+
 interface AdminDashboardProps {
   articles: Article[];
   onAddArticle: (article: Omit<Article, 'id'>) => void;
@@ -17,6 +29,11 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
     description: '',
     image: '',
     source: 'BuzzPatrika',
+    author: 'BuzzPatrika Desk',
+    organization: 'BuzzPatrika',
+    tags: 'news, latest, update',
+    location: 'India',
+    sourceCredibilityScore: 0.72,
     category: 'NEWS',
   });
 
@@ -27,7 +44,14 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
 
     const articleData = {
       ...formData,
+      slug: `${slugify(formData.title)}-${Date.now().toString().slice(-6)}`,
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      publishedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      tags: formData.tags
+        .split(',')
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean),
     };
 
     if (editingId) {
@@ -41,6 +65,11 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
       description: '',
       image: '',
       source: 'Buzzपत्रिका',
+      author: 'BuzzPatrika Desk',
+      organization: 'BuzzPatrika',
+      tags: 'news, latest, update',
+      location: 'India',
+      sourceCredibilityScore: 0.72,
       category: 'NEWS',
     });
     setIsEditing(false);
@@ -53,6 +82,11 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
       description: article.description,
       image: article.image,
       source: article.source,
+      author: article.author,
+      organization: article.organization,
+      tags: article.tags.join(', '),
+      location: article.location || 'India',
+      sourceCredibilityScore: article.sourceCredibilityScore,
       category: article.category,
     });
     setEditingId(article.id);
@@ -65,6 +99,11 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
       description: '',
       image: '',
       source: 'Buzzपत्रिका',
+      author: 'BuzzPatrika Desk',
+      organization: 'BuzzPatrika',
+      tags: 'news, latest, update',
+      location: 'India',
+      sourceCredibilityScore: 0.72,
       category: 'NEWS',
     });
     setIsEditing(false);
@@ -196,6 +235,82 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                     placeholder="Buzzपत्रिका"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                    <FileText className="w-4 h-4" />
+                    Author
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.author}
+                    onChange={(e) => setFormData({ ...formData, author: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-500 transition-colors"
+                    placeholder="BuzzPatrika Desk"
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                    <FileText className="w-4 h-4" />
+                    Organization
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.organization}
+                    onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-500 transition-colors"
+                    placeholder="BuzzPatrika"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="sm:col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                    <Tag className="w-4 h-4" />
+                    Tags / Keywords
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.tags}
+                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-500 transition-colors"
+                    placeholder="politics, finance, tech"
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                    <FileText className="w-4 h-4" />
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-500 transition-colors"
+                    placeholder="India"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+                  <FileText className="w-4 h-4" />
+                  Source Credibility Score (0 to 1)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={formData.sourceCredibilityScore}
+                  onChange={(e) => setFormData({ ...formData, sourceCredibilityScore: Number(e.target.value) })}
+                  className="w-full sm:w-56 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-orange-500 transition-colors"
+                />
               </div>
 
               <div>

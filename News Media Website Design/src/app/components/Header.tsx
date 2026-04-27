@@ -1,9 +1,14 @@
-import { Search, Menu, X, LogIn, LogOut, Newspaper, RefreshCw } from 'lucide-react';
+import { Search, Menu, X, LogIn, LogOut, Newspaper, RefreshCw, Globe2 } from 'lucide-react';
 import { useState } from 'react';
 
 export interface NewsCategory {
   slug: string;
   displayName: string;
+}
+
+export interface NewsCountry {
+  code: string;
+  label: string;
 }
 
 interface HeaderProps {
@@ -14,12 +19,16 @@ interface HeaderProps {
   onHomeClick: () => void;
   isAdminView: boolean;
   categories: NewsCategory[];
+  countries: NewsCountry[];
   activeCategory: string | null;
+  activeCountry: string;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onCategorySelect: (slug: string | null) => void;
+  onCountrySelect: (countryCode: string) => void;
   onRefreshStories: () => void;
   isRefreshingStories: boolean;
+  lastUpdatedLabel: string;
 }
 
 export function Header({
@@ -30,12 +39,16 @@ export function Header({
   onHomeClick,
   isAdminView,
   categories,
+  countries,
   activeCategory,
+  activeCountry,
   searchQuery,
   onSearchChange,
   onCategorySelect,
+  onCountrySelect,
   onRefreshStories,
   isRefreshingStories,
+  lastUpdatedLabel,
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const displayCategories = categories.length > 0
@@ -83,6 +96,22 @@ export function Header({
               />
             </div>
 
+            <div className="hidden sm:flex items-center gap-2 bg-white/10 border border-white/10 rounded-lg px-3 py-2">
+              <Globe2 className="w-4 h-4 text-gray-300" />
+              <select
+                value={activeCountry}
+                onChange={(event) => onCountrySelect(event.target.value)}
+                className="bg-transparent text-sm text-white focus:outline-none"
+                title="Select country"
+              >
+                {countries.map((country) => (
+                  <option key={country.code} value={country.code} className="bg-slate-900 text-white">
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <button
               onClick={onRefreshStories}
               disabled={isRefreshingStories}
@@ -91,6 +120,10 @@ export function Header({
             >
               <RefreshCw className={`w-5 h-5 ${isRefreshingStories ? 'animate-spin' : ''}`} />
             </button>
+
+            <div className="hidden sm:block px-3 py-2 text-xs text-gray-100 bg-white/10 border border-white/10 rounded-lg whitespace-nowrap">
+              Last updated at {lastUpdatedLabel}
+            </div>
 
             {isAdmin ? (
               <>
@@ -160,6 +193,26 @@ export function Header({
                 placeholder="Search stories..."
                 className="bg-transparent w-full text-sm text-white placeholder:text-gray-300 focus:outline-none"
               />
+            </div>
+
+            <div className="mb-3 flex items-center gap-2 bg-white/10 border border-white/10 rounded-lg px-3 py-2">
+              <Globe2 className="w-4 h-4 text-gray-300" />
+              <select
+                value={activeCountry}
+                onChange={(event) => onCountrySelect(event.target.value)}
+                className="bg-transparent w-full text-sm text-white focus:outline-none"
+                title="Select country"
+              >
+                {countries.map((country) => (
+                  <option key={country.code} value={country.code} className="bg-slate-900 text-white">
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="mb-3 px-3 py-2 text-xs text-gray-100 bg-white/10 border border-white/10 rounded-lg">
+              Last updated at {lastUpdatedLabel}
             </div>
 
             <div className="grid grid-cols-2 gap-2">

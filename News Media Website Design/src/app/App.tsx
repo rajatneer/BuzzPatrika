@@ -1,39 +1,114 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Header, NewsCategory } from './components/Header';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Header, NewsCategory, NewsCountry } from './components/Header';
 import { NewsFeed } from './components/NewsFeed';
 import { AdminDashboard } from './components/AdminDashboard';
 import { LoginModal } from './components/LoginModal';
 import { Article } from './components/NewsCard';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api';
+const SITE_URL = (import.meta.env.VITE_SITE_URL ?? 'http://localhost:5500').replace(/\/+$/, '');
+const AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+
+function slugify(value: string): string {
+  const normalized = value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+
+  return normalized || 'story';
+}
+
+function upsertMetaTag(attr: 'name' | 'property', key: string, content: string): void {
+  let tag = document.head.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+
+  if (!tag) {
+    tag = document.createElement('meta');
+    tag.setAttribute(attr, key);
+    document.head.appendChild(tag);
+  }
+
+  tag.setAttribute('content', content);
+}
+
+function upsertLinkTag(rel: string, href: string): void {
+  let tag = document.head.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+
+  if (!tag) {
+    tag = document.createElement('link');
+    tag.setAttribute('rel', rel);
+    document.head.appendChild(tag);
+  }
+
+  tag.setAttribute('href', href);
+}
+
+function upsertJsonLd(id: string, payload: unknown): void {
+  let tag = document.getElementById(id) as HTMLScriptElement | null;
+
+  if (!tag) {
+    tag = document.createElement('script');
+    tag.id = id;
+    tag.type = 'application/ld+json';
+    document.head.appendChild(tag);
+  }
+
+  tag.textContent = JSON.stringify(payload);
+}
 
 const FALLBACK_ARTICLES: Article[] = [
   {
     id: '1',
+    slug: 'times-now-navbharat-digital-launches-high-tech-election-coverage-1',
     title: 'Times Now Navbharat Digital Launches High-Tech Election Coverage with Real-Time Data Analysis',
     description: 'As the 2026 Vidhan Sabha General Assembly Elections approach, the political temperature in the state has reached a fever pitch, and Times Now Navbharat has upgraded its digital platform to provide comprehensive coverage.',
     image: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop',
     source: 'Buzzपत्रिका',
+    author: 'BuzzPatrika Political Desk',
+    organization: 'BuzzPatrika',
     date: 'April 22, 2026',
+    publishedAt: '2026-04-22T08:00:00.000Z',
+    updatedAt: '2026-04-22T10:00:00.000Z',
     category: 'TECH',
+    tags: ['election', 'technology', 'india'],
+    location: 'India',
+    sourceCredibilityScore: 0.82,
   },
   {
     id: '2',
+    slug: 'tech-giants-announce-major-ai-collaboration-for-2026-2',
     title: 'Tech Giants Announce Major AI Collaboration for 2026',
     description: 'Leading technology companies have come together to form an unprecedented alliance focused on advancing artificial intelligence research while ensuring ethical development and deployment of AI systems.',
     image: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&auto=format&fit=crop',
     source: 'Buzzपत्रिका',
+    author: 'BuzzPatrika Tech Desk',
+    organization: 'BuzzPatrika',
     date: 'April 23, 2026',
+    publishedAt: '2026-04-23T08:00:00.000Z',
+    updatedAt: '2026-04-23T09:15:00.000Z',
     category: 'TECH',
+    tags: ['ai', 'technology', 'innovation'],
+    location: 'India',
+    sourceCredibilityScore: 0.8,
   },
   {
     id: '3',
+    slug: 'global-climate-summit-reaches-historic-agreement-3',
     title: 'Global Climate Summit Reaches Historic Agreement',
     description: 'World leaders have reached a landmark agreement on climate action, committing to ambitious carbon reduction targets and substantial investments in renewable energy infrastructure across all participating nations.',
     image: 'https://images.unsplash.com/photo-1473186578172-c141e6798cf4?w=800&auto=format&fit=crop',
     source: 'Buzzपत्रिका',
+    author: 'BuzzPatrika Policy Desk',
+    organization: 'BuzzPatrika',
     date: 'April 23, 2026',
+    publishedAt: '2026-04-23T11:00:00.000Z',
+    updatedAt: '2026-04-23T12:10:00.000Z',
     category: 'NEWS',
+    tags: ['climate', 'global', 'policy'],
+    location: 'Global',
+    sourceCredibilityScore: 0.79,
   },
 ];
 
@@ -48,6 +123,16 @@ const CATEGORY_IMAGES: Record<string, string> = {
   news: 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&auto=format&fit=crop',
 };
 
+const COUNTRY_OPTIONS: NewsCountry[] = [
+  { code: 'in', label: 'India' },
+  { code: 'us', label: 'United States' },
+  { code: 'gb', label: 'United Kingdom' },
+  { code: 'au', label: 'Australia' },
+  { code: 'ca', label: 'Canada' },
+  { code: 'ae', label: 'UAE' },
+  { code: 'sg', label: 'Singapore' },
+];
+
 interface BackendCategory {
   slug: string;
   display_name: string;
@@ -55,9 +140,19 @@ interface BackendCategory {
 
 interface BackendStory {
   id: number;
+  slug?: string | null;
   category: string;
   headline: string;
   summary: string;
+  authorName?: string | null;
+  organizationName?: string | null;
+  updatedAt?: string | null;
+  location?: string | null;
+  sourceCredibilityScore?: number | null;
+  featuredMediaUrl?: string | null;
+  featured_media_url?: string | null;
+  tags?: string[];
+  countryCode?: string | null;
   sourceUrl?: string | null;
   provider?: string | null;
   publishedAt?: string | null;
@@ -105,18 +200,54 @@ function toArticleCategory(categorySlug: string): string {
   return categorySlug.replace(/-/g, ' ').toUpperCase();
 }
 
+function getCountryLabel(countryCode?: string | null): string {
+  if (!countryCode) {
+    return 'India';
+  }
+
+  const normalized = countryCode.toLowerCase();
+  const country = COUNTRY_OPTIONS.find((item) => item.code === normalized);
+  return country?.label ?? normalized.toUpperCase();
+}
+
 function mapStoryToArticle(story: BackendStory): Article {
-  const image = CATEGORY_IMAGES[story.category] ?? CATEGORY_IMAGES.news;
+  const sourceImage = story.featuredMediaUrl || story.featured_media_url;
+  const isRepresentativeImage = !sourceImage;
+  const image = sourceImage || CATEGORY_IMAGES[story.category] || CATEGORY_IMAGES.news;
+  const providerLabel = toProviderLabel(story.provider);
+  const publishedAt = story.publishedAt ?? story.sourcePublishedAt ?? new Date().toISOString();
+  const updatedAt = story.updatedAt ?? publishedAt;
+  const normalizedTags = Array.isArray(story.tags)
+    ? story.tags.map((tag) => String(tag).toLowerCase()).filter(Boolean)
+    : [];
+  const tags = normalizedTags.length > 0
+    ? normalizedTags
+    : [story.category, story.provider ?? 'news', story.countryCode ?? 'in'].map((tag) => String(tag).toLowerCase());
+  const sourceCredibilityScore = Number.isFinite(Number(story.sourceCredibilityScore))
+    ? Math.max(0, Math.min(1, Number(story.sourceCredibilityScore)))
+    : 0.65;
+  const slug = story.slug && story.slug.trim().length > 0
+    ? story.slug
+    : `${slugify(story.headline)}-${story.id}`;
 
   return {
     id: String(story.id),
+    slug,
     title: story.headline,
     description: story.summary,
     image,
     source: toProviderLabel(story.provider),
-    date: formatStoryDate(story.publishedAt ?? story.sourcePublishedAt),
+    author: story.authorName?.trim() || `${providerLabel} Desk`,
+    organization: story.organizationName?.trim() || providerLabel,
+    date: formatStoryDate(publishedAt),
+    publishedAt,
+    updatedAt,
     category: toArticleCategory(story.category),
+    tags,
+    location: story.location ?? getCountryLabel(story.countryCode),
+    sourceCredibilityScore,
     sourceUrl: story.sourceUrl ?? undefined,
+    isRepresentativeImage,
   };
 }
 
@@ -126,12 +257,22 @@ export default function App() {
   const [isAdminView, setIsAdminView] = useState(false);
   const [articles, setArticles] = useState<Article[]>(FALLBACK_ARTICLES);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
+  const [selectedCountry, setSelectedCountry] = useState('in');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingStories, setIsLoadingStories] = useState(false);
   const [storiesError, setStoriesError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [isRefreshingStories, setIsRefreshingStories] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date());
+
+  const lastUpdatedLabel = useMemo(() => (
+    lastUpdatedAt.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  ), [lastUpdatedAt]);
 
   const activeCategoryLabel = useMemo(() => {
     if (!selectedCategory) {
@@ -145,6 +286,109 @@ export default function App() {
 
     return selectedCategory;
   }, [categories, selectedCategory]);
+
+  const activeCountryLabel = useMemo(() => {
+    const country = COUNTRY_OPTIONS.find((item) => item.code === selectedCountry);
+    return country?.label ?? 'India';
+  }, [selectedCountry]);
+
+  useEffect(() => {
+    const sectionLabel = selectedCategory ? `${activeCategoryLabel} news` : 'latest news';
+    const title = `${activeCountryLabel} ${sectionLabel} | BuzzPatrika`;
+    const description = `Read ${sectionLabel} from ${activeCountryLabel}. Browse verified stories with tags, authors, location data, and source credibility scores.`;
+    const keywordPool = Array.from(new Set([
+      'buzzpatrika',
+      'news',
+      activeCountryLabel.toLowerCase(),
+      activeCategoryLabel.toLowerCase(),
+      ...articles.flatMap((article) => article.tags).slice(0, 20),
+    ])).join(', ');
+
+    const query = new URLSearchParams({ country: selectedCountry });
+    if (selectedCategory) {
+      query.set('category', selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
+      query.set('q', searchQuery.trim());
+    }
+
+    const canonicalUrl = `${SITE_URL}/index.html?${query.toString()}`;
+
+    document.title = title;
+    upsertMetaTag('name', 'description', description);
+    upsertMetaTag('name', 'keywords', keywordPool);
+    upsertMetaTag('name', 'robots', 'index, follow, max-image-preview:large');
+    upsertMetaTag('property', 'og:title', title);
+    upsertMetaTag('property', 'og:description', description);
+    upsertMetaTag('property', 'og:type', 'website');
+    upsertMetaTag('property', 'og:url', canonicalUrl);
+    upsertMetaTag('property', 'og:site_name', 'BuzzPatrika');
+    upsertMetaTag('name', 'twitter:card', 'summary_large_image');
+    upsertMetaTag('name', 'twitter:title', title);
+    upsertMetaTag('name', 'twitter:description', description);
+    upsertLinkTag('canonical', canonicalUrl);
+
+    const itemListElement = articles.slice(0, 15).map((article, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      item: {
+        '@type': 'NewsArticle',
+        headline: article.title,
+        description: article.description,
+        datePublished: article.publishedAt,
+        dateModified: article.updatedAt,
+        author: {
+          '@type': 'Person',
+          name: article.author,
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: article.organization,
+        },
+        image: [article.image],
+        keywords: article.tags.join(', '),
+        articleSection: article.category,
+        contentLocation: article.location
+          ? {
+            '@type': 'Place',
+            name: article.location,
+          }
+          : undefined,
+        url: `${SITE_URL}/index.html?slug=${encodeURIComponent(article.slug)}`,
+      },
+    }));
+
+    upsertJsonLd('buzzpatrika-seo-jsonld', {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'WebSite',
+          name: 'BuzzPatrika',
+          url: `${SITE_URL}/index.html`,
+          inLanguage: 'en',
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: `${SITE_URL}/index.html?q={search_term_string}`,
+            'query-input': 'required name=search_term_string',
+          },
+        },
+        {
+          '@type': 'CollectionPage',
+          name: title,
+          description,
+          url: canonicalUrl,
+          inLanguage: 'en',
+        },
+        {
+          '@type': 'ItemList',
+          name: `${activeCountryLabel} news list`,
+          numberOfItems: itemListElement.length,
+          itemListElement,
+        },
+      ],
+    });
+  }, [activeCategoryLabel, activeCountryLabel, articles, searchQuery, selectedCategory, selectedCountry]);
 
   useEffect(() => {
     let isActive = true;
@@ -202,6 +446,8 @@ export default function App() {
           params.set('category', selectedCategory);
         }
 
+        params.set('country', selectedCountry);
+
         const q = searchQuery.trim();
         if (q) {
           params.set('q', q);
@@ -220,6 +466,7 @@ export default function App() {
 
         if (isActive) {
           setArticles(nextArticles);
+          setLastUpdatedAt(new Date());
         }
       } catch (error) {
         if (!isActive) {
@@ -245,7 +492,7 @@ export default function App() {
       controller.abort();
       window.clearTimeout(timerId);
     };
-  }, [refreshTick, searchQuery, selectedCategory]);
+  }, [refreshTick, searchQuery, selectedCategory, selectedCountry]);
 
   const handleLogin = (username: string, password: string) => {
     void username;
@@ -261,16 +508,31 @@ export default function App() {
   };
 
   const handleAddArticle = (article: Omit<Article, 'id'>) => {
+    const nowIso = new Date().toISOString();
     const newArticle: Article = {
       ...article,
       id: Date.now().toString(),
+      slug: article.slug || `${slugify(article.title)}-${Date.now().toString().slice(-6)}`,
+      publishedAt: article.publishedAt || nowIso,
+      updatedAt: article.updatedAt || nowIso,
+      tags: article.tags.length > 0 ? article.tags : ['news', 'latest'],
+      sourceCredibilityScore: Math.max(0, Math.min(1, article.sourceCredibilityScore)),
     };
     setArticles((previous) => [newArticle, ...previous]);
   };
 
   const handleUpdateArticle = (id: string, updatedArticle: Omit<Article, 'id'>) => {
+    const nowIso = new Date().toISOString();
     setArticles((previous) => previous.map((article) =>
-      article.id === id ? { ...updatedArticle, id } : article
+      article.id === id
+        ? {
+          ...updatedArticle,
+          id,
+          updatedAt: nowIso,
+          date: formatStoryDate(updatedArticle.publishedAt || nowIso),
+          sourceCredibilityScore: Math.max(0, Math.min(1, updatedArticle.sourceCredibilityScore)),
+        }
+        : article
     ));
   };
 
@@ -278,10 +540,47 @@ export default function App() {
     setArticles((previous) => previous.filter((article) => article.id !== id));
   };
 
-  const handleRefreshStories = () => {
+  const handleRefreshStories = useCallback(() => {
     setIsRefreshingStories(true);
-    setRefreshTick((value) => value + 1);
-  };
+
+    const runRefresh = async () => {
+      try {
+        const payload: { country: string; category?: string } = { country: selectedCountry };
+        if (selectedCategory) {
+          payload.category = selectedCategory;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/pipeline/run`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to refresh stories (${response.status})`);
+        }
+      } catch (error) {
+        setStoriesError(error instanceof Error ? error.message : 'Failed to refresh stories.');
+      } finally {
+        setRefreshTick((value) => value + 1);
+      }
+    };
+
+    void runRefresh();
+  }, [selectedCategory, selectedCountry]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setIsRefreshingStories(true);
+      setRefreshTick((value) => value + 1);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -293,12 +592,16 @@ export default function App() {
         onHomeClick={() => setIsAdminView(false)}
         isAdminView={isAdminView}
         categories={categories}
+        countries={COUNTRY_OPTIONS}
         activeCategory={selectedCategory}
+        activeCountry={selectedCountry}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCategorySelect={setSelectedCategory}
+        onCountrySelect={setSelectedCountry}
         onRefreshStories={handleRefreshStories}
         isRefreshingStories={isRefreshingStories}
+        lastUpdatedLabel={lastUpdatedLabel}
       />
 
       {isAdminView ? (
@@ -314,6 +617,7 @@ export default function App() {
           isLoading={isLoadingStories}
           error={storiesError}
           activeCategoryLabel={activeCategoryLabel}
+          activeCountryLabel={activeCountryLabel}
           searchQuery={searchQuery}
           onRetry={handleRefreshStories}
         />
