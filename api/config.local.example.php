@@ -9,4 +9,6 @@ return [
     "defaultCountryCode" => "in",
     "newsApiKey" => "",
     "alphaVantageApiKey" => "",
+    "newsApiDailyRequestLimit" => 25,
+    "alphaVantageDailyRequestLimit" => 25,
 ];

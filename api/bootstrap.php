@@ -88,6 +88,8 @@ function app_config(): array
         "defaultCountryCode" => "in",
         "newsApiKey" => "",
         "alphaVantageApiKey" => "",
+        "newsApiDailyRequestLimit" => 25,
+        "alphaVantageDailyRequestLimit" => 25,
     ];
 
     $localPath = API_ROOT . "/config.local.php";
@@ -100,6 +102,8 @@ function app_config(): array
             $config["defaultCountryCode"] = sanitize_country_code((string) ($config["defaultCountryCode"] ?? "in"));
             $config["newsApiKey"] = trim((string) ($config["newsApiKey"] ?? ""));
             $config["alphaVantageApiKey"] = trim((string) ($config["alphaVantageApiKey"] ?? ""));
+            $config["newsApiDailyRequestLimit"] = max(1, (int) ($config["newsApiDailyRequestLimit"] ?? 25));
+            $config["alphaVantageDailyRequestLimit"] = max(1, (int) ($config["alphaVantageDailyRequestLimit"] ?? 25));
             return $config;
         }
     }
@@ -113,6 +117,8 @@ function app_config(): array
         "defaultCountryCode" => sanitize_country_code(getenv("DEFAULT_COUNTRY_CODE") ?: $default["defaultCountryCode"]),
         "newsApiKey" => trim((string) (getenv("NEWS_API_KEY") ?: "")),
         "alphaVantageApiKey" => trim((string) (getenv("ALPHA_VANTAGE_API_KEY") ?: "")),
+        "newsApiDailyRequestLimit" => max(1, (int) (getenv("NEWS_API_DAILY_REQUEST_LIMIT") ?: $default["newsApiDailyRequestLimit"])),
+        "alphaVantageDailyRequestLimit" => max(1, (int) (getenv("ALPHA_VANTAGE_DAILY_REQUEST_LIMIT") ?: $default["alphaVantageDailyRequestLimit"])),
     ];
 
     return $config;
@@ -1169,6 +1175,60 @@ function list_stories(array $query): array
     });
 
     return array_slice($rows, 0, $limit);
+}
+
+function list_provider_usage(): array
+{
+    $config = app_config();
+    $snapshot = read_store_snapshot();
+
+    $todayStartTs = strtotime(gmdate("Y-m-d") . " 00:00:00 UTC");
+    $todayEndTs = strtotime(gmdate("Y-m-d") . " 23:59:59 UTC");
+
+    $usedByProvider = [
+        "newsapi" => 0,
+        "alphavantage" => 0,
+    ];
+
+    foreach ($snapshot["source_items"] as $item) {
+        $provider = strtolower((string) ($item["provider"] ?? ""));
+        if (!array_key_exists($provider, $usedByProvider)) {
+            continue;
+        }
+
+        $publishedAt = (string) ($item["published_at"] ?? $item["created_at"] ?? "");
+        $publishedTs = strtotime($publishedAt);
+        if ($publishedTs === false) {
+            continue;
+        }
+
+        if ($publishedTs < $todayStartTs || $publishedTs > $todayEndTs) {
+            continue;
+        }
+
+        $usedByProvider[$provider] += 1;
+    }
+
+    $limits = [
+        "newsapi" => max(1, (int) ($config["newsApiDailyRequestLimit"] ?? 25)),
+        "alphavantage" => max(1, (int) ($config["alphaVantageDailyRequestLimit"] ?? 25)),
+    ];
+
+    $providers = [];
+    foreach ($usedByProvider as $provider => $used) {
+        $limit = $limits[$provider] ?? 25;
+        $remaining = max(0, $limit - $used);
+
+        $providers[] = [
+            "provider" => $provider,
+            "used" => $used,
+            "limit" => $limit,
+            "remaining" => $remaining,
+            "capped" => $used >= $limit,
+        ];
+    }
+
+    return $providers;
 }
 
 function normalize_read_action(string $action): ?string
