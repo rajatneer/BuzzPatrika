@@ -6,7 +6,7 @@ This folder replaces the Node backend for basic shared hosting.
 
 - GET /api/health
 - GET /api/categories
-- GET /api/stories
+- GET /api/stories (supports maxAgeDays, default 7, capped to 7)
 - GET /api/jobs
 - POST /api/pipeline/run
 
@@ -14,6 +14,7 @@ This folder replaces the Node backend for basic shared hosting.
 
 1. Copy `config.local.example.php` to `config.local.php`.
 2. Set provider keys in `config.local.php`.
+3. Keep `storiesMaxAgeDays` at 7 to only publish and return latest weekly news.
 
 ## Scheduler (cPanel Cron)
 

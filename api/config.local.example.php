@@ -4,6 +4,7 @@ return [
     "serviceName" => "mediababa-php",
     "schedulerCron" => "*/30 * * * *",
     "ingestLimitPerCategory" => 5,
+    "storiesMaxAgeDays" => 7,
     "autoPublish" => true,
     "defaultCountryCode" => "in",
     "newsApiKey" => "",

@@ -83,6 +83,7 @@ function app_config(): array
         "serviceName" => "mediababa-php",
         "schedulerCron" => "*/30 * * * *",
         "ingestLimitPerCategory" => 5,
+        "storiesMaxAgeDays" => 7,
         "autoPublish" => true,
         "defaultCountryCode" => "in",
         "newsApiKey" => "",
@@ -94,6 +95,11 @@ function app_config(): array
         $local = require $localPath;
         if (is_array($local)) {
             $config = array_merge($default, $local);
+            $config["ingestLimitPerCategory"] = max(1, (int) ($config["ingestLimitPerCategory"] ?? 5));
+            $config["storiesMaxAgeDays"] = sanitize_max_age_days($config["storiesMaxAgeDays"] ?? 7);
+            $config["defaultCountryCode"] = sanitize_country_code((string) ($config["defaultCountryCode"] ?? "in"));
+            $config["newsApiKey"] = trim((string) ($config["newsApiKey"] ?? ""));
+            $config["alphaVantageApiKey"] = trim((string) ($config["alphaVantageApiKey"] ?? ""));
             return $config;
         }
     }
@@ -102,6 +108,7 @@ function app_config(): array
         "serviceName" => getenv("SERVICE_NAME") ?: $default["serviceName"],
         "schedulerCron" => getenv("SCHEDULER_CRON") ?: $default["schedulerCron"],
         "ingestLimitPerCategory" => (int) (getenv("INGEST_LIMIT_PER_CATEGORY") ?: $default["ingestLimitPerCategory"]),
+        "storiesMaxAgeDays" => sanitize_max_age_days(getenv("STORIES_MAX_AGE_DAYS") ?: $default["storiesMaxAgeDays"]),
         "autoPublish" => strtolower((string) (getenv("AUTO_PUBLISH") ?: ($default["autoPublish"] ? "true" : "false"))) === "true",
         "defaultCountryCode" => sanitize_country_code(getenv("DEFAULT_COUNTRY_CODE") ?: $default["defaultCountryCode"]),
         "newsApiKey" => trim((string) (getenv("NEWS_API_KEY") ?: "")),
@@ -115,6 +122,20 @@ function sanitize_country_code(string $countryCode): string
 {
     $normalized = strtolower(trim($countryCode));
     return preg_match('/^[a-z]{2}$/', $normalized) === 1 ? $normalized : "in";
+}
+
+function sanitize_max_age_days($raw): int
+{
+    $days = (int) $raw;
+    if ($days < 1) {
+        $days = 1;
+    }
+
+    if ($days > 7) {
+        $days = 7;
+    }
+
+    return $days;
 }
 
 function now_iso(): string
@@ -1036,6 +1057,7 @@ function to_story_row(array $story, ?array $source): array
 
 function list_stories(array $query): array
 {
+    $config = app_config();
     $snapshot = read_store_snapshot();
     $stories = $snapshot["generated_stories"];
     $sourceById = [];
@@ -1060,6 +1082,10 @@ function list_stories(array $query): array
     $limitRaw = $query["limit"] ?? 20;
     $limit = is_numeric($limitRaw) ? (int) $limitRaw : 20;
     $limit = max(1, min($limit, 100));
+
+    $maxAgeDaysRaw = $query["maxAgeDays"] ?? ($config["storiesMaxAgeDays"] ?? 7);
+    $maxAgeDays = sanitize_max_age_days($maxAgeDaysRaw);
+    $freshnessCutoffTs = time() - ($maxAgeDays * 24 * 60 * 60);
 
     $rows = [];
 
@@ -1115,6 +1141,21 @@ function list_stories(array $query): array
             if (strpos($haystack, $search) === false) {
                 continue;
             }
+        }
+
+        $freshnessCandidate = (string) (
+            $source["published_at"]
+            ?? $story["published_at"]
+            ?? $story["created_at"]
+            ?? now_iso()
+        );
+        $freshnessTs = strtotime($freshnessCandidate);
+        if ($freshnessTs === false) {
+            $freshnessTs = time();
+        }
+
+        if ($freshnessTs < $freshnessCutoffTs) {
+            continue;
         }
 
         $rows[] = to_story_row($story, $source);
