@@ -1,45 +1,47 @@
 name: Deploy to GoDaddy
 
-on:
-push:
-branches: [ "main" ]
-workflow_dispatch:
+'on':
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
-steps:
-  - name: Checkout
-    uses: actions/checkout@v4
+  deploy:
+    runs-on: ubuntu-latest
 
-  - name: Setup Node
-    uses: actions/setup-node@v4
-    with:
-      node-version: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  - name: Install and build frontend
-    working-directory: News Media Website Design
-    run: |
-      npm ci
-      npm run build
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-  - name: Prepare deploy package
-    run: |
-      mkdir -p deploy
-      cp -R "News Media Website Design/dist/." deploy/
-      cp -R api deploy/api
-      if [ -d pages ]; then cp -R pages deploy/pages; fi
-      if [ -f [robots.txt](http://_vscodecontentref_/0) ]; then cp [robots.txt](http://_vscodecontentref_/1) deploy/; fi
-      if [ -f [sitemap.xml](http://_vscodecontentref_/2) ]; then cp [sitemap.xml](http://_vscodecontentref_/3) deploy/; fi
+      - name: Install and build frontend
+        working-directory: News Media Website Design
+        run: |
+          npm install
+          npm run build
 
-  - name: FTP Deploy
-    uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-    with:
-      server: ${{ secrets.GODADDY_FTP_HOST }}
-      username: ${{ secrets.GODADDY_FTP_USERNAME }}
-      password: ${{ secrets.GODADDY_FTP_PASSWORD }}
-      port: ${{ secrets.GODADDY_FTP_PORT }}
-      protocol: ftp
-      local-dir: deploy/
-      server-dir: /public_html/
-      dangerous-clean-slate: false
+      - name: Prepare deploy package
+        run: |
+          mkdir -p deploy
+          cp -R "News Media Website Design/dist/." deploy/
+          cp -R api deploy/api
+          if [ -d pages ]; then cp -R pages deploy/pages; fi
+          if [ -f robots.txt ]; then cp robots.txt deploy/; fi
+          if [ -f sitemap.xml ]; then cp sitemap.xml deploy/; fi
+
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.GODADDY_FTP_HOST }}
+          username: ${{ secrets.GODADDY_FTP_USERNAME }}
+          password: ${{ secrets.GODADDY_FTP_PASSWORD }}
+          port: ${{ secrets.GODADDY_FTP_PORT }}
+          protocol: ftp
+          local-dir: deploy/
+          server-dir: /public_html/
+          dangerous-clean-slate: false
