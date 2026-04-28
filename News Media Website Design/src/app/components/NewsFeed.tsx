@@ -1,4 +1,4 @@
-import { NewsCard, Article } from './NewsCard';
+import { NewsCard, Article, ReadActionType } from './NewsCard';
 import { TrendingUp, Flame } from 'lucide-react';
 
 interface NewsFeedProps {
@@ -9,6 +9,7 @@ interface NewsFeedProps {
   activeCountryLabel: string;
   searchQuery: string;
   onRetry: () => void;
+  onReadActionClick: (articleId: string, action: ReadActionType) => void;
 }
 
 export function NewsFeed({
@@ -19,6 +20,7 @@ export function NewsFeed({
   activeCountryLabel,
   searchQuery,
   onRetry,
+  onReadActionClick,
 }: NewsFeedProps) {
   const featuredArticle = articles[0];
   const regularArticles = articles.slice(1);
@@ -83,7 +85,7 @@ export function NewsFeed({
                     Breaking News
                   </h2>
                 </div>
-                <NewsCard article={featuredArticle} featured={true} />
+                <NewsCard article={featuredArticle} featured={true} onReadActionClick={onReadActionClick} />
               </div>
             )}
 
@@ -100,7 +102,7 @@ export function NewsFeed({
 
                 <div className="space-y-6">
                   {regularArticles.map((article) => (
-                    <NewsCard key={article.id} article={article} />
+                    <NewsCard key={article.id} article={article} onReadActionClick={onReadActionClick} />
                   ))}
                 </div>
               </>

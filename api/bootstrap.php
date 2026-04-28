@@ -182,6 +182,7 @@ function default_store(): array
         "source_items" => [],
         "generated_stories" => [],
         "job_runs" => [],
+        "read_clicks" => [],
     ];
 }
 
@@ -210,6 +211,7 @@ function decode_store(string $raw): array
     $decoded["source_items"] = is_array($decoded["source_items"] ?? null) ? $decoded["source_items"] : [];
     $decoded["generated_stories"] = is_array($decoded["generated_stories"] ?? null) ? $decoded["generated_stories"] : [];
     $decoded["job_runs"] = is_array($decoded["job_runs"] ?? null) ? $decoded["job_runs"] : [];
+    $decoded["read_clicks"] = is_array($decoded["read_clicks"] ?? null) ? $decoded["read_clicks"] : [];
 
     return $decoded;
 }
@@ -1166,4 +1168,83 @@ function list_stories(array $query): array
     });
 
     return array_slice($rows, 0, $limit);
+}
+
+function normalize_read_action(string $action): ?string
+{
+    $normalized = strtolower(trim($action));
+    $normalized = str_replace("_", "-", $normalized);
+
+    if ($normalized === "read-more" || $normalized === "read-full-story") {
+        return $normalized;
+    }
+
+    return null;
+}
+
+function sanitize_read_click_stats($raw): array
+{
+    if (!is_array($raw)) {
+        return [
+            "readMore" => 0,
+            "readFullStory" => 0,
+            "lastClickedAt" => null,
+        ];
+    }
+
+    return [
+        "readMore" => max(0, (int) ($raw["readMore"] ?? 0)),
+        "readFullStory" => max(0, (int) ($raw["readFullStory"] ?? 0)),
+        "lastClickedAt" => is_string($raw["lastClickedAt"] ?? null) ? (string) $raw["lastClickedAt"] : null,
+    ];
+}
+
+function list_read_click_stats(): array
+{
+    $snapshot = read_store_snapshot();
+    $rawStats = is_array($snapshot["read_clicks"] ?? null) ? $snapshot["read_clicks"] : [];
+    $normalized = [];
+
+    foreach ($rawStats as $storyId => $stats) {
+        $storyKey = (string) $storyId;
+        if ($storyKey === "") {
+            continue;
+        }
+
+        $normalized[$storyKey] = sanitize_read_click_stats($stats);
+    }
+
+    return $normalized;
+}
+
+function record_read_click(int $storyId, string $action): array
+{
+    if ($storyId <= 0) {
+        throw new RuntimeException("Invalid storyId");
+    }
+
+    $normalizedAction = normalize_read_action($action);
+    if ($normalizedAction === null) {
+        throw new RuntimeException("Invalid action");
+    }
+
+    return with_store_lock(function (array &$store) use ($storyId, $normalizedAction): array {
+        if (!isset($store["read_clicks"]) || !is_array($store["read_clicks"])) {
+            $store["read_clicks"] = [];
+        }
+
+        $storyKey = (string) $storyId;
+        $current = sanitize_read_click_stats($store["read_clicks"][$storyKey] ?? []);
+
+        if ($normalizedAction === "read-more") {
+            $current["readMore"] += 1;
+        } else {
+            $current["readFullStory"] += 1;
+        }
+
+        $current["lastClickedAt"] = now_iso();
+        $store["read_clicks"][$storyKey] = $current;
+
+        return $current;
+    });
 }

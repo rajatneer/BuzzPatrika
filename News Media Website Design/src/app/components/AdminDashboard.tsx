@@ -20,6 +20,11 @@ interface AdminDashboardProps {
   onUpdateArticle: (id: string, article: Omit<Article, 'id'>) => void;
   onDeleteArticle: (id: string) => void;
   apiBaseUrl: string;
+  readActionStats: Record<string, {
+    readMore: number;
+    readFullStory: number;
+    lastClickedAt: string | null;
+  }>;
 }
 
 interface ProviderUsageItem {
@@ -89,7 +94,7 @@ function isSameLocalDay(isoValue: string, compareDate: Date): boolean {
   return parsed.toDateString() === compareDate.toDateString();
 }
 
-export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDeleteArticle, apiBaseUrl }: AdminDashboardProps) {
+export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDeleteArticle, apiBaseUrl, readActionStats }: AdminDashboardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
@@ -553,7 +558,15 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                 <p className="text-gray-400 text-sm mt-1">Create your first article above to get started</p>
               </div>
             ) : (
-              articles.map((article) => (
+              articles.map((article) => {
+                const articleReadStats = readActionStats[article.id] ?? {
+                  readMore: 0,
+                  readFullStory: 0,
+                  lastClickedAt: null,
+                };
+                const totalReadClicks = articleReadStats.readMore + articleReadStats.readFullStory;
+
+                return (
                 <div key={article.id} className="p-6 hover:bg-gray-50 transition-colors">
                   <div className="flex flex-col sm:flex-row gap-4">
                     <img
@@ -609,7 +622,7 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                   {selectedInsightId === article.id ? (
                     <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <h4 className="text-sm font-bold text-slate-800 mb-3">Article Insights</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div className="rounded-lg bg-white p-3 border border-slate-100">
                           <p className="text-xs text-slate-500">Credibility</p>
                           <p className="text-lg font-bold text-slate-900">{Math.round(Math.max(0, Math.min(1, article.sourceCredibilityScore)) * 100)}%</p>
@@ -626,9 +639,13 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                           <p className="text-xs text-slate-500">Tags</p>
                           <p className="text-lg font-bold text-slate-900">{article.tags.length}</p>
                         </div>
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="text-xs text-slate-500">Read Clicks</p>
+                          <p className="text-lg font-bold text-slate-900">{totalReadClicks}</p>
+                        </div>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600">
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-600">
                         <div className="rounded-lg bg-white p-3 border border-slate-100">
                           <p className="font-semibold text-slate-700 mb-1">Source Domain</p>
                           <p>{getSourceDomain(article.sourceUrl)}</p>
@@ -637,11 +654,17 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                           <p className="font-semibold text-slate-700 mb-1">Updated</p>
                           <p>{new Date(article.updatedAt).toLocaleString()}</p>
                         </div>
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="font-semibold text-slate-700 mb-1">Read Actions</p>
+                          <p>Read More: {articleReadStats.readMore} | Read Full Story: {articleReadStats.readFullStory}</p>
+                          <p className="mt-1 text-slate-500">Last click: {articleReadStats.lastClickedAt ? new Date(articleReadStats.lastClickedAt).toLocaleString() : 'N/A'}</p>
+                        </div>
                       </div>
                     </div>
                   ) : null}
                 </div>
-              ))
+              );
+              })
             )}
           </div>
         </div>

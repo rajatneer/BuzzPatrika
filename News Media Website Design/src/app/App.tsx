@@ -3,7 +3,7 @@ import { Header, NewsCategory, NewsCountry } from './components/Header';
 import { NewsFeed } from './components/NewsFeed';
 import { AdminDashboard } from './components/AdminDashboard';
 import { LoginModal } from './components/LoginModal';
-import { Article } from './components/NewsCard';
+import { Article, ReadActionType } from './components/NewsCard';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (
   typeof window !== 'undefined'
@@ -17,6 +17,55 @@ const SITE_URL = (
   ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5500')
 ).replace(/\/+$/, '');
 const AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+const READ_ACTION_STATS_STORAGE_KEY = 'buzzpatrika-read-action-stats-v1';
+
+interface ReadActionCounts {
+  readMore: number;
+  readFullStory: number;
+  lastClickedAt: string | null;
+}
+
+type ReadActionStatsMap = Record<string, ReadActionCounts>;
+
+function normalizeReadActionStats(input: unknown): ReadActionStatsMap {
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+
+  const parsed = input as Record<string, Partial<ReadActionCounts>>;
+  const normalized: ReadActionStatsMap = {};
+
+  Object.entries(parsed).forEach(([articleId, value]) => {
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+
+    normalized[articleId] = {
+      readMore: Math.max(0, Number(value.readMore) || 0),
+      readFullStory: Math.max(0, Number(value.readFullStory) || 0),
+      lastClickedAt: typeof value.lastClickedAt === 'string' ? value.lastClickedAt : null,
+    };
+  });
+
+  return normalized;
+}
+
+function loadReadActionStats(): ReadActionStatsMap {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(READ_ACTION_STATS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    return normalizeReadActionStats(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
 
 function slugify(value: string): string {
   const normalized = value
@@ -229,6 +278,7 @@ export default function App() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [isRefreshingStories, setIsRefreshingStories] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date());
+  const [readActionStats, setReadActionStats] = useState<ReadActionStatsMap>(() => loadReadActionStats());
 
   const lastUpdatedLabel = useMemo(() => (
     lastUpdatedAt.toLocaleTimeString([], {
@@ -547,6 +597,113 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadReadStats = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/analytics/read-stats`);
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json() as { stats?: unknown };
+        const stats = normalizeReadActionStats(payload.stats);
+
+        if (isMounted) {
+          setReadActionStats(stats);
+        }
+      } catch {
+        // Local Node API does not expose analytics endpoints yet; keep local fallback state.
+      }
+    };
+
+    void loadReadStats();
+    const intervalId = window.setInterval(loadReadStats, 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(READ_ACTION_STATS_STORAGE_KEY, JSON.stringify(readActionStats));
+  }, [readActionStats]);
+
+  const trackReadActionOnApi = useCallback(async (articleId: string, action: ReadActionType) => {
+    const storyId = Number(articleId);
+    if (!Number.isFinite(storyId) || storyId <= 0) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/analytics/read-click`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storyId,
+          action,
+        }),
+        keepalive: true,
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json() as { storyId?: number | string; stats?: unknown };
+      const storyKey = payload.storyId !== undefined ? String(payload.storyId) : articleId;
+      const normalized = normalizeReadActionStats({ [storyKey]: payload.stats });
+      const nextStats = normalized[storyKey];
+
+      if (!nextStats) {
+        return;
+      }
+
+      setReadActionStats((previous) => ({
+        ...previous,
+        [storyKey]: nextStats,
+      }));
+    } catch {
+      // Keep optimistic UI count when analytics endpoint is unavailable.
+    }
+  }, []);
+
+  const handleReadActionClick = useCallback((articleId: string, action: ReadActionType) => {
+    setReadActionStats((previous) => {
+      const current = previous[articleId] ?? {
+        readMore: 0,
+        readFullStory: 0,
+        lastClickedAt: null,
+      };
+
+      const next = {
+        ...current,
+        lastClickedAt: new Date().toISOString(),
+      };
+
+      if (action === 'read-more') {
+        next.readMore += 1;
+      } else {
+        next.readFullStory += 1;
+      }
+
+      return {
+        ...previous,
+        [articleId]: next,
+      };
+    });
+
+    void trackReadActionOnApi(articleId, action);
+  }, [trackReadActionOnApi]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header
@@ -576,6 +733,7 @@ export default function App() {
           onUpdateArticle={handleUpdateArticle}
           onDeleteArticle={handleDeleteArticle}
           apiBaseUrl={API_BASE_URL}
+          readActionStats={readActionStats}
         />
       ) : (
         <NewsFeed
@@ -586,6 +744,7 @@ export default function App() {
           activeCountryLabel={activeCountryLabel}
           searchQuery={searchQuery}
           onRetry={handleRefreshStories}
+          onReadActionClick={handleReadActionClick}
         />
       )}
 

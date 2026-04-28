@@ -9,6 +9,8 @@ This folder replaces the Node backend for basic shared hosting.
 - GET /api/stories (supports maxAgeDays, default 7, capped to 7)
 - GET /api/jobs
 - POST /api/pipeline/run
+- POST /api/analytics/read-click (tracks Read More / Read Full Story clicks)
+- GET /api/analytics/read-stats (returns per-story click totals)
 
 ## Configuration
 

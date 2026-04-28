@@ -1,5 +1,7 @@
 import { Clock, ArrowRight, TrendingUp } from 'lucide-react';
 
+export type ReadActionType = 'read-more' | 'read-full-story';
+
 export interface Article {
   id: string;
   slug: string;
@@ -23,24 +25,32 @@ export interface Article {
 interface NewsCardProps {
   article: Article;
   featured?: boolean;
+  onReadActionClick?: (articleId: string, action: ReadActionType) => void;
 }
 
-export function NewsCard({ article, featured = false }: NewsCardProps) {
+export function NewsCard({ article, featured = false, onReadActionClick }: NewsCardProps) {
   const credibility = `${Math.round(Math.max(0, Math.min(1, article.sourceCredibilityScore)) * 100)}%`;
   const topTags = article.tags.slice(0, 3);
+  const trackReadAction = (action: ReadActionType) => {
+    onReadActionClick?.(article.id, action);
+  };
 
   const readAction = article.sourceUrl ? (
     <a
       href={article.sourceUrl}
       target="_blank"
       rel="noreferrer"
+      onClick={() => trackReadAction('read-full-story')}
       className="inline-flex items-center gap-2 text-white font-medium group-hover:gap-3 transition-all"
     >
       Read Full Story
       <ArrowRight className="w-4 h-4" />
     </a>
   ) : (
-    <button className="inline-flex items-center gap-2 text-white font-medium group-hover:gap-3 transition-all">
+    <button
+      onClick={() => trackReadAction('read-full-story')}
+      className="inline-flex items-center gap-2 text-white font-medium group-hover:gap-3 transition-all"
+    >
       Read Full Story
       <ArrowRight className="w-4 h-4" />
     </button>
@@ -51,13 +61,17 @@ export function NewsCard({ article, featured = false }: NewsCardProps) {
       href={article.sourceUrl}
       target="_blank"
       rel="noreferrer"
+      onClick={() => trackReadAction('read-more')}
       className="inline-flex items-center gap-1.5 text-sm text-red-600 font-semibold group-hover:gap-2.5 transition-all"
     >
       Read More
       <ArrowRight className="w-4 h-4" />
     </a>
   ) : (
-    <button className="inline-flex items-center gap-1.5 text-sm text-red-600 font-semibold group-hover:gap-2.5 transition-all">
+    <button
+      onClick={() => trackReadAction('read-more')}
+      className="inline-flex items-center gap-1.5 text-sm text-red-600 font-semibold group-hover:gap-2.5 transition-all"
+    >
       Read More
       <ArrowRight className="w-4 h-4" />
     </button>
