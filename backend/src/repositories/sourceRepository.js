@@ -11,6 +11,7 @@ export function upsertSourceItem(item) {
       UPDATE source_items
       SET
         provider = @provider,
+        country_code = @countryCode,
         category_slug = @categorySlug,
         title = @title,
         summary = @summary,
@@ -30,6 +31,7 @@ export function upsertSourceItem(item) {
     INSERT INTO source_items (
       external_id,
       provider,
+      country_code,
       category_slug,
       title,
       summary,
@@ -42,6 +44,7 @@ export function upsertSourceItem(item) {
     ) VALUES (
       @externalId,
       @provider,
+      @countryCode,
       @categorySlug,
       @title,
       @summary,

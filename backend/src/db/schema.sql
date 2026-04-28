@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS source_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   external_id TEXT NOT NULL UNIQUE,
   provider TEXT NOT NULL,
+  country_code TEXT NOT NULL DEFAULT 'in',
   category_slug TEXT NOT NULL,
   title TEXT NOT NULL,
   summary TEXT,
@@ -23,27 +24,38 @@ CREATE TABLE IF NOT EXISTS source_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_items_category ON source_items(category_slug);
+CREATE INDEX IF NOT EXISTS idx_source_items_country ON source_items(country_code);
 CREATE INDEX IF NOT EXISTS idx_source_items_published_at ON source_items(published_at);
 
 CREATE TABLE IF NOT EXISTS generated_stories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_item_id INTEGER,
   category_slug TEXT NOT NULL,
+  slug TEXT,
   headline TEXT NOT NULL,
   summary TEXT NOT NULL,
   story_body TEXT NOT NULL,
+  author_name TEXT,
+  organization_name TEXT,
+  location TEXT,
+  source_credibility_score REAL DEFAULT 0.5,
+  featured_media_url TEXT,
   tags_json TEXT,
   confidence_score REAL DEFAULT 0,
   generation_model TEXT NOT NULL DEFAULT 'rules-v1',
   generation_status TEXT NOT NULL DEFAULT 'generated',
   editorial_status TEXT NOT NULL DEFAULT 'review_required',
   published_at TEXT,
+  updated_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (source_item_id) REFERENCES source_items(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_generated_stories_category ON generated_stories(category_slug);
 CREATE INDEX IF NOT EXISTS idx_generated_stories_editorial_status ON generated_stories(editorial_status);
+CREATE INDEX IF NOT EXISTS idx_generated_stories_slug ON generated_stories(slug);
+CREATE INDEX IF NOT EXISTS idx_generated_stories_location ON generated_stories(location);
+CREATE INDEX IF NOT EXISTS idx_generated_stories_source_credibility ON generated_stories(source_credibility_score);
 
 CREATE TABLE IF NOT EXISTS job_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

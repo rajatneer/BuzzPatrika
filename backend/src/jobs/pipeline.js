@@ -9,7 +9,7 @@ import { generateStoryFromSource } from "../services/storyGenerator.js";
 
 initializeDatabase();
 
-export async function runPipeline({ categorySlug = null } = {}) {
+export async function runPipeline({ categorySlug = null, countryCode = env.defaultCountryCode } = {}) {
   const categories = categorySlug ? [getCategoryBySlug(categorySlug)].filter(Boolean) : CATEGORY_CONFIG;
 
   if (categories.length === 0) {
@@ -31,7 +31,7 @@ export async function runPipeline({ categorySlug = null } = {}) {
   try {
     for (const category of categories) {
       stats.categoriesProcessed += 1;
-      const sourceItems = await fetchSourceItemsForCategory(category, env.ingestLimitPerCategory);
+      const sourceItems = await fetchSourceItemsForCategory(category, env.ingestLimitPerCategory, countryCode);
 
       for (const sourceItem of sourceItems) {
         const sourceItemId = Number(upsertSourceItem(sourceItem));

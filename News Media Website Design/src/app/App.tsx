@@ -5,8 +5,17 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { LoginModal } from './components/LoginModal';
 import { Article } from './components/NewsCard';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api';
-const SITE_URL = (import.meta.env.VITE_SITE_URL ?? 'http://localhost:5500').replace(/\/+$/, '');
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (
+  typeof window !== 'undefined'
+    && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    && window.location.port === '5500'
+    ? 'http://localhost:4000/api'
+    : '/api'
+);
+const SITE_URL = (
+  import.meta.env.VITE_SITE_URL
+  ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5500')
+).replace(/\/+$/, '');
 const AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
 function slugify(value: string): string {
@@ -58,60 +67,6 @@ function upsertJsonLd(id: string, payload: unknown): void {
   tag.textContent = JSON.stringify(payload);
 }
 
-const FALLBACK_ARTICLES: Article[] = [
-  {
-    id: '1',
-    slug: 'times-now-navbharat-digital-launches-high-tech-election-coverage-1',
-    title: 'Times Now Navbharat Digital Launches High-Tech Election Coverage with Real-Time Data Analysis',
-    description: 'As the 2026 Vidhan Sabha General Assembly Elections approach, the political temperature in the state has reached a fever pitch, and Times Now Navbharat has upgraded its digital platform to provide comprehensive coverage.',
-    image: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop',
-    source: 'Buzzपत्रिका',
-    author: 'BuzzPatrika Political Desk',
-    organization: 'BuzzPatrika',
-    date: 'April 22, 2026',
-    publishedAt: '2026-04-22T08:00:00.000Z',
-    updatedAt: '2026-04-22T10:00:00.000Z',
-    category: 'TECH',
-    tags: ['election', 'technology', 'india'],
-    location: 'India',
-    sourceCredibilityScore: 0.82,
-  },
-  {
-    id: '2',
-    slug: 'tech-giants-announce-major-ai-collaboration-for-2026-2',
-    title: 'Tech Giants Announce Major AI Collaboration for 2026',
-    description: 'Leading technology companies have come together to form an unprecedented alliance focused on advancing artificial intelligence research while ensuring ethical development and deployment of AI systems.',
-    image: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&auto=format&fit=crop',
-    source: 'Buzzपत्रिका',
-    author: 'BuzzPatrika Tech Desk',
-    organization: 'BuzzPatrika',
-    date: 'April 23, 2026',
-    publishedAt: '2026-04-23T08:00:00.000Z',
-    updatedAt: '2026-04-23T09:15:00.000Z',
-    category: 'TECH',
-    tags: ['ai', 'technology', 'innovation'],
-    location: 'India',
-    sourceCredibilityScore: 0.8,
-  },
-  {
-    id: '3',
-    slug: 'global-climate-summit-reaches-historic-agreement-3',
-    title: 'Global Climate Summit Reaches Historic Agreement',
-    description: 'World leaders have reached a landmark agreement on climate action, committing to ambitious carbon reduction targets and substantial investments in renewable energy infrastructure across all participating nations.',
-    image: 'https://images.unsplash.com/photo-1473186578172-c141e6798cf4?w=800&auto=format&fit=crop',
-    source: 'Buzzपत्रिका',
-    author: 'BuzzPatrika Policy Desk',
-    organization: 'BuzzPatrika',
-    date: 'April 23, 2026',
-    publishedAt: '2026-04-23T11:00:00.000Z',
-    updatedAt: '2026-04-23T12:10:00.000Z',
-    category: 'NEWS',
-    tags: ['climate', 'global', 'policy'],
-    location: 'Global',
-    sourceCredibilityScore: 0.79,
-  },
-];
-
 const CATEGORY_IMAGES: Record<string, string> = {
   trending: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=800&auto=format&fit=crop',
   business: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&auto=format&fit=crop',
@@ -161,26 +116,35 @@ interface BackendStory {
 
 function formatStoryDate(value?: string | null): string {
   if (!value) {
-    return new Date().toLocaleDateString('en-US', {
+    return new Date().toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
   }
 
   const parsedDate = new Date(value);
   if (Number.isNaN(parsedDate.getTime())) {
-    return new Date().toLocaleDateString('en-US', {
+    return new Date().toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
   }
 
-  return parsedDate.toLocaleDateString('en-US', {
+  return parsedDate.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
   });
 }
 
@@ -255,7 +219,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
-  const [articles, setArticles] = useState<Article[]>(FALLBACK_ARTICLES);
+  const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [selectedCountry, setSelectedCountry] = useState('in');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -440,6 +404,7 @@ export default function App() {
         const params = new URLSearchParams({
           status: 'published',
           limit: '30',
+          maxAgeDays: '7',
         });
 
         if (selectedCategory) {
@@ -478,7 +443,7 @@ export default function App() {
         }
 
         setStoriesError(error instanceof Error ? error.message : 'Unknown error while loading stories.');
-        setArticles((previous) => (previous.length > 0 ? previous : FALLBACK_ARTICLES));
+        setArticles((previous) => (previous.length > 0 ? previous : []));
       } finally {
         if (isActive) {
           setIsLoadingStories(false);
@@ -610,6 +575,7 @@ export default function App() {
           onAddArticle={handleAddArticle}
           onUpdateArticle={handleUpdateArticle}
           onDeleteArticle={handleDeleteArticle}
+          apiBaseUrl={API_BASE_URL}
         />
       ) : (
         <NewsFeed

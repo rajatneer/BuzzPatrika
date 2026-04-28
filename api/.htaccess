@@ -1,0 +1,8 @@
+Options -MultiViews
+RewriteEngine On
+
+RewriteRule ^health$ health/index.php [L,QSA]
+RewriteRule ^categories$ categories/index.php [L,QSA]
+RewriteRule ^stories$ stories/index.php [L,QSA]
+RewriteRule ^jobs$ jobs/index.php [L,QSA]
+RewriteRule ^pipeline/run$ pipeline/run/index.php [L,QSA]

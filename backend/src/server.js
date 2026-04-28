@@ -6,6 +6,7 @@ import { initializeDatabase } from "./db/initDb.js";
 import { listCategories } from "./repositories/categoryRepository.js";
 import { listJobRuns } from "./repositories/jobRunRepository.js";
 import { listStories } from "./repositories/storyRepository.js";
+import { getProviderUsageSnapshot } from "./services/providerService.js";
 import { runPipeline } from "./jobs/pipeline.js";
 
 initializeDatabase();
@@ -25,17 +26,28 @@ app.get("/api/health", (_request, response) => {
 });
 
 app.get("/api/categories", (_request, response) => {
+  const categories = listCategories().map((category) => ({
+    ...category,
+    display_name: category.displayName
+  }));
+
   response.json({
-    categories: listCategories()
+    categories
   });
 });
 
 app.get("/api/stories", (request, response) => {
   const stories = listStories({
     category: request.query.category,
+    country: request.query.country,
+    tag: request.query.tag,
+    location: request.query.location,
+    minCredibility: request.query.minCredibility,
+    slug: request.query.slug,
     q: request.query.q,
     status: request.query.status || "published",
-    limit: request.query.limit
+    limit: request.query.limit,
+    maxAgeDays: request.query.maxAgeDays || env.storiesMaxAgeDays
   });
 
   response.json({ stories });
@@ -47,10 +59,15 @@ app.get("/api/jobs", (request, response) => {
   });
 });
 
+app.get("/api/provider-usage", (_request, response) => {
+  response.json(getProviderUsageSnapshot());
+});
+
 app.post("/api/pipeline/run", async (request, response) => {
   try {
     const categorySlug = request.body?.category || null;
-    const stats = await runPipeline({ categorySlug });
+    const countryCode = request.body?.country || env.defaultCountryCode;
+    const stats = await runPipeline({ categorySlug, countryCode });
 
     response.json({
       message: "Pipeline run completed",
@@ -65,7 +82,7 @@ app.post("/api/pipeline/run", async (request, response) => {
 
 cron.schedule(env.schedulerCron, async () => {
   try {
-    const stats = await runPipeline();
+    const stats = await runPipeline({ countryCode: env.defaultCountryCode });
     console.log("Scheduled pipeline run completed", stats);
   } catch (error) {
     console.error("Scheduled pipeline run failed", error.message);

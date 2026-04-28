@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Edit, Trash2, Save, X, FileText, Image as ImageIcon, Tag } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Edit, Trash2, Save, X, FileText, Image as ImageIcon, Tag, BarChart3 } from 'lucide-react';
 import { Article } from './NewsCard';
 
 function slugify(value: string): string {
@@ -19,11 +19,83 @@ interface AdminDashboardProps {
   onAddArticle: (article: Omit<Article, 'id'>) => void;
   onUpdateArticle: (id: string, article: Omit<Article, 'id'>) => void;
   onDeleteArticle: (id: string) => void;
+  apiBaseUrl: string;
 }
 
-export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDeleteArticle }: AdminDashboardProps) {
+interface ProviderUsageItem {
+  provider: string;
+  used: number;
+  limit: number;
+  remaining: number;
+  capped: boolean;
+}
+
+function getSourceDomain(url?: string): string {
+  if (!url) {
+    return 'N/A';
+  }
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'N/A';
+  }
+}
+
+function estimateReadMinutes(text: string): number {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 180));
+}
+
+function articleAgeHours(publishedAt: string): number {
+  const then = new Date(publishedAt).getTime();
+  if (Number.isNaN(then)) {
+    return 0;
+  }
+
+  const diffMs = Math.max(0, Date.now() - then);
+  return Math.round(diffMs / (1000 * 60 * 60));
+}
+
+function formatDateTime(value: Date | string): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function isSameLocalDay(isoValue: string, compareDate: Date): boolean {
+  const parsed = new Date(isoValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return parsed.toDateString() === compareDate.toDateString();
+}
+
+export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDeleteArticle, apiBaseUrl }: AdminDashboardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedInsightId, setSelectedInsightId] = useState<string | null>(null);
+  const [providerUsage, setProviderUsage] = useState<ProviderUsageItem[]>([]);
+  const [isLoadingUsage, setIsLoadingUsage] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -39,15 +111,87 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
 
   const categories = ['TRENDING', 'CONTENT', 'STARTUP', 'BUSINESS', 'ENTERTAINMENT', 'EDTECH', 'SOCIAL MEDIA', 'SPORTS', 'TECH', 'NEWS', 'EVENTS', 'PODCAST', 'LIVE'];
 
+  const averageCredibility = useMemo(() => {
+    if (articles.length === 0) {
+      return 0;
+    }
+
+    const total = articles.reduce((sum, article) => sum + Math.max(0, Math.min(1, article.sourceCredibilityScore)), 0);
+    return Math.round((total / articles.length) * 100);
+  }, [articles]);
+
+  const usagePercent = useMemo(() => {
+    if (providerUsage.length === 0) {
+      return 0;
+    }
+
+    const totalUsed = providerUsage.reduce((sum, item) => sum + item.used, 0);
+    const totalLimit = providerUsage.reduce((sum, item) => sum + item.limit, 0);
+    if (totalLimit === 0) {
+      return 0;
+    }
+
+    return Math.round((totalUsed / totalLimit) * 100);
+  }, [providerUsage]);
+
+  const usageProvidersLabel = useMemo(() => {
+    if (providerUsage.length === 0) {
+      return 'No provider data';
+    }
+
+    return providerUsage.map((item) => item.provider).join(' + ');
+  }, [providerUsage]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadProviderUsage = async () => {
+      try {
+        setIsLoadingUsage(true);
+        setUsageError(null);
+        const response = await fetch(`${apiBaseUrl}/provider-usage`);
+
+        if (!response.ok) {
+          throw new Error(`Failed to load provider usage (${response.status})`);
+        }
+
+        const payload = await response.json() as { providers?: ProviderUsageItem[] };
+        if (isMounted) {
+          setProviderUsage(Array.isArray(payload.providers) ? payload.providers : []);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setUsageError(error instanceof Error ? error.message : 'Failed to load provider usage');
+          setProviderUsage([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingUsage(false);
+        }
+      }
+    };
+
+    loadProviderUsage();
+    const intervalId = window.setInterval(loadProviderUsage, 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [apiBaseUrl]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    const now = new Date();
+    const nowIso = now.toISOString();
 
     const articleData = {
       ...formData,
       slug: `${slugify(formData.title)}-${Date.now().toString().slice(-6)}`,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      publishedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      date: formatDateTime(now),
+      publishedAt: nowIso,
+      updatedAt: nowIso,
       tags: formData.tags
         .split(',')
         .map((tag) => tag.trim().toLowerCase())
@@ -122,20 +266,68 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
               <p className="text-gray-500 font-medium">Create and manage your news articles</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-5 rounded-xl text-white shadow-lg">
               <p className="text-blue-100 text-sm font-medium mb-1">Total Articles</p>
               <p className="text-3xl font-bold">{articles.length}</p>
             </div>
             <div className="bg-gradient-to-br from-green-500 to-green-600 p-5 rounded-xl text-white shadow-lg">
               <p className="text-green-100 text-sm font-medium mb-1">Published Today</p>
-              <p className="text-3xl font-bold">{articles.filter(a => a.date === new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })).length}</p>
+              <p className="text-3xl font-bold">{articles.filter((article) => isSameLocalDay(article.publishedAt, new Date())).length}</p>
             </div>
             <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-5 rounded-xl text-white shadow-lg">
               <p className="text-purple-100 text-sm font-medium mb-1">Categories</p>
               <p className="text-3xl font-bold">{new Set(articles.map(a => a.category)).size}</p>
             </div>
+            <div className="bg-gradient-to-br from-cyan-500 to-cyan-600 p-5 rounded-xl text-white shadow-lg">
+              <p className="text-cyan-100 text-sm font-medium mb-1">Avg Credibility</p>
+              <p className="text-3xl font-bold">{averageCredibility}%</p>
+            </div>
+            <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-5 rounded-xl text-white shadow-lg">
+              <p className="text-amber-100 text-sm font-medium mb-1">Daily API Usage</p>
+              <p className="text-3xl font-bold">{usagePercent}%</p>
+              <p className="text-[11px] text-amber-100 mt-1">{isLoadingUsage ? 'Refreshing…' : usageProvidersLabel}</p>
+            </div>
           </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-slate-700" />
+              <h2 className="text-lg font-bold text-slate-900">Daily API Limit Dashboard</h2>
+            </div>
+            <span className="text-xs text-slate-500">Auto refresh: 60s</span>
+          </div>
+
+          {usageError ? (
+            <p className="text-sm text-red-600">{usageError}</p>
+          ) : providerUsage.length === 0 ? (
+            <p className="text-sm text-slate-500">No provider usage data yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {providerUsage.map((item) => {
+                const percent = item.limit > 0 ? Math.min(100, Math.round((item.used / item.limit) * 100)) : 0;
+                return (
+                  <div key={item.provider} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-slate-800">{item.provider}</p>
+                      <p className={`text-xs font-semibold ${item.capped ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {item.used}/{item.limit}
+                      </p>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mb-2">
+                      <div
+                        className={`h-full ${item.capped ? 'bg-red-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">Remaining today: {item.remaining}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Add/Edit Form */}
@@ -387,6 +579,13 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                     </div>
                     <div className="flex sm:flex-col gap-2">
                       <button
+                        onClick={() => setSelectedInsightId((prev) => (prev === article.id ? null : article.id))}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-700 text-white rounded-xl hover:bg-slate-800 transition-colors font-medium shadow-md"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                        <span>Insights</span>
+                      </button>
+                      <button
                         onClick={() => handleEdit(article)}
                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors font-medium shadow-md"
                       >
@@ -406,6 +605,41 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                       </button>
                     </div>
                   </div>
+
+                  {selectedInsightId === article.id ? (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <h4 className="text-sm font-bold text-slate-800 mb-3">Article Insights</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="text-xs text-slate-500">Credibility</p>
+                          <p className="text-lg font-bold text-slate-900">{Math.round(Math.max(0, Math.min(1, article.sourceCredibilityScore)) * 100)}%</p>
+                        </div>
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="text-xs text-slate-500">Age</p>
+                          <p className="text-lg font-bold text-slate-900">{articleAgeHours(article.publishedAt)}h</p>
+                        </div>
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="text-xs text-slate-500">Read Time</p>
+                          <p className="text-lg font-bold text-slate-900">{estimateReadMinutes(article.description)} min</p>
+                        </div>
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="text-xs text-slate-500">Tags</p>
+                          <p className="text-lg font-bold text-slate-900">{article.tags.length}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600">
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="font-semibold text-slate-700 mb-1">Source Domain</p>
+                          <p>{getSourceDomain(article.sourceUrl)}</p>
+                        </div>
+                        <div className="rounded-lg bg-white p-3 border border-slate-100">
+                          <p className="font-semibold text-slate-700 mb-1">Updated</p>
+                          <p>{new Date(article.updatedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))
             )}
