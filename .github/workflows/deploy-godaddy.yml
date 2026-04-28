@@ -9,15 +9,35 @@ name: Deploy to GoDaddy
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      FTP_SERVER: ${{ secrets.GODADDY_FTP_HOST || secrets.FTP_SERVER || secrets.FTP_HOST }}
+      FTP_USERNAME: ${{ secrets.GODADDY_FTP_USERNAME || secrets.FTP_USERNAME || secrets.FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.GODADDY_FTP_PASSWORD || secrets.FTP_PASSWORD }}
+      FTP_PORT: ${{ secrets.GODADDY_FTP_PORT || secrets.FTP_PORT || '21' }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
+
+      - name: Validate FTP secrets
+        run: |
+          if [ -z "$FTP_SERVER" ]; then
+            echo "::error::Missing FTP host secret. Set GODADDY_FTP_HOST (or FTP_SERVER/FTP_HOST)."
+            exit 1
+          fi
+          if [ -z "$FTP_USERNAME" ]; then
+            echo "::error::Missing FTP username secret. Set GODADDY_FTP_USERNAME (or FTP_USERNAME/FTP_USER)."
+            exit 1
+          fi
+          if [ -z "$FTP_PASSWORD" ]; then
+            echo "::error::Missing FTP password secret. Set GODADDY_FTP_PASSWORD (or FTP_PASSWORD)."
+            exit 1
+          fi
 
       - name: Install and build frontend
         working-directory: News Media Website Design
@@ -37,10 +57,10 @@ jobs:
       - name: FTP Deploy
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.GODADDY_FTP_HOST }}
-          username: ${{ secrets.GODADDY_FTP_USERNAME }}
-          password: ${{ secrets.GODADDY_FTP_PASSWORD }}
-          port: ${{ secrets.GODADDY_FTP_PORT }}
+          server: ${{ env.FTP_SERVER }}
+          username: ${{ env.FTP_USERNAME }}
+          password: ${{ env.FTP_PASSWORD }}
+          port: ${{ env.FTP_PORT }}
           protocol: ftp
           local-dir: deploy/
           server-dir: /public_html/
