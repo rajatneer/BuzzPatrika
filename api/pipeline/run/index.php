@@ -11,11 +11,8 @@ if (strtoupper((string) ($_SERVER["REQUEST_METHOD"] ?? "GET")) !== "POST") {
 }
 
 $body = read_json_body();
-$categorySlug = "trending";
-$countryCode = "in";
-
-// Keep body read to avoid breaking clients that still send it.
-unset($body);
+$categorySlug = isset($body["category"]) ? trim((string) $body["category"]) : null;
+$countryCode = isset($body["country"]) ? sanitize_country_code((string) $body["country"]) : app_config()["defaultCountryCode"];
 
 try {
     $stats = run_pipeline([

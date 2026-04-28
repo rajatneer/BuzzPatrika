@@ -18,8 +18,6 @@ const SITE_URL = (
 ).replace(/\/+$/, '');
 const AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 const READ_ACTION_STATS_STORAGE_KEY = 'buzzpatrika-read-action-stats-v1';
-const ENFORCED_COUNTRY = 'in';
-const ENFORCED_CATEGORY = 'trending';
 
 interface ReadActionCounts {
   readMore: number;
@@ -322,8 +320,8 @@ export default function App() {
   const [isAdminView, setIsAdminView] = useState(false);
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
-  const [selectedCountry, setSelectedCountry] = useState(ENFORCED_COUNTRY);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(ENFORCED_CATEGORY);
+  const [selectedCountry, setSelectedCountry] = useState('in');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingStories, setIsLoadingStories] = useState(false);
   const [storiesError, setStoriesError] = useState<string | null>(null);
@@ -370,7 +368,10 @@ export default function App() {
       ...articles.flatMap((article) => article.tags).slice(0, 20),
     ])).join(', ');
 
-    const query = new URLSearchParams({ country: ENFORCED_COUNTRY, category: ENFORCED_CATEGORY });
+    const query = new URLSearchParams({ country: selectedCountry });
+    if (selectedCategory) {
+      query.set('category', selectedCategory);
+    }
 
     if (searchQuery.trim()) {
       query.set('q', searchQuery.trim());
@@ -451,7 +452,7 @@ export default function App() {
         },
       ],
     });
-  }, [activeCategoryLabel, activeCountryLabel, articles, searchQuery]);
+  }, [activeCategoryLabel, activeCountryLabel, articles, searchQuery, selectedCategory, selectedCountry]);
 
   useEffect(() => {
     let isActive = true;
@@ -503,9 +504,12 @@ export default function App() {
         const params = new URLSearchParams({
           status: 'published',
           limit: '30',
-          country: ENFORCED_COUNTRY,
-          category: ENFORCED_CATEGORY,
+          country: selectedCountry,
         });
+
+        if (selectedCategory) {
+          params.set('category', selectedCategory);
+        }
 
         const q = searchQuery.trim();
         if (q) {
@@ -551,7 +555,7 @@ export default function App() {
       controller.abort();
       window.clearTimeout(timerId);
     };
-  }, [refreshTick, searchQuery]);
+  }, [refreshTick, searchQuery, selectedCategory, selectedCountry]);
 
   const handleLogin = (username: string, password: string) => {
     void username;
@@ -604,10 +608,10 @@ export default function App() {
 
     const runRefresh = async () => {
       try {
-        const payload: { country: string; category: string } = {
-          country: ENFORCED_COUNTRY,
-          category: ENFORCED_CATEGORY,
-        };
+        const payload: { country: string; category?: string } = { country: selectedCountry };
+        if (selectedCategory) {
+          payload.category = selectedCategory;
+        }
 
         const response = await fetch(`${API_BASE_URL}/pipeline/run`, {
           method: 'POST',
@@ -628,7 +632,7 @@ export default function App() {
     };
 
     void runRefresh();
-  }, []);
+  }, [selectedCategory, selectedCountry]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -765,12 +769,12 @@ export default function App() {
         isAdminView={isAdminView}
         categories={categories}
         countries={COUNTRY_OPTIONS}
-        activeCategory={ENFORCED_CATEGORY}
-        activeCountry={ENFORCED_COUNTRY}
+        activeCategory={selectedCategory}
+        activeCountry={selectedCountry}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        onCategorySelect={() => setSelectedCategory(ENFORCED_CATEGORY)}
-        onCountrySelect={() => setSelectedCountry(ENFORCED_COUNTRY)}
+        onCategorySelect={setSelectedCategory}
+        onCountrySelect={setSelectedCountry}
         onRefreshStories={handleRefreshStories}
         isRefreshingStories={isRefreshingStories}
         lastUpdatedLabel={lastUpdatedLabel}

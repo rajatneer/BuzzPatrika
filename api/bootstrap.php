@@ -1079,8 +1079,8 @@ function list_stories(array $query): array
         ? trim((string) $query["status"])
         : "published";
 
-    $category = "trending";
-    $country = "in";
+    $category = isset($query["category"]) ? trim((string) $query["category"]) : "";
+    $country = isset($query["country"]) ? sanitize_country_code((string) $query["country"]) : "";
     $tag = isset($query["tag"]) ? strtolower(trim((string) $query["tag"])) : "";
     $location = isset($query["location"]) ? strtolower(trim((string) $query["location"])) : "";
     $slug = isset($query["slug"]) ? trim((string) $query["slug"]) : "";

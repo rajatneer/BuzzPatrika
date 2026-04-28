@@ -4,9 +4,9 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . "/bootstrap.php";
 
 try {
+    $config = app_config();
     $stats = run_pipeline([
-        "categorySlug" => "trending",
-        "countryCode" => "in",
+        "countryCode" => $config["defaultCountryCode"],
     ]);
 
     json_response([
