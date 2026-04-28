@@ -91,20 +91,6 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
                 <p className="text-red-700 text-sm font-medium">{error}</p>
               </div>
             )}
-
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
-              <p className="text-sm font-semibold text-gray-700 mb-2">Demo Credentials</p>
-              <div className="space-y-1 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Username:</span>
-                  <code className="bg-white px-2 py-1 rounded border border-blue-200 font-mono">admin</code>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Password:</span>
-                  <code className="bg-white px-2 py-1 rounded border border-blue-200 font-mono">admin123</code>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="flex gap-3 mt-6">
