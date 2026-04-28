@@ -27,6 +27,31 @@ interface ReadActionCounts {
 
 type ReadActionStatsMap = Record<string, ReadActionCounts>;
 
+function mergeReadActionStats(previous: ReadActionStatsMap, incoming: ReadActionStatsMap): ReadActionStatsMap {
+  const next: ReadActionStatsMap = { ...previous };
+
+  Object.entries(incoming).forEach(([articleId, incomingStats]) => {
+    const current = next[articleId] ?? {
+      readMore: 0,
+      readFullStory: 0,
+      lastClickedAt: null,
+    };
+
+    const lastClickedAt = [current.lastClickedAt, incomingStats.lastClickedAt]
+      .filter((value): value is string => typeof value === 'string')
+      .sort()
+      .at(-1) ?? null;
+
+    next[articleId] = {
+      readMore: Math.max(current.readMore, incomingStats.readMore),
+      readFullStory: Math.max(current.readFullStory, incomingStats.readFullStory),
+      lastClickedAt,
+    };
+  });
+
+  return next;
+}
+
 function normalizeReadActionStats(input: unknown): ReadActionStatsMap {
   if (!input || typeof input !== 'object') {
     return {};
@@ -223,6 +248,31 @@ function getCountryLabel(countryCode?: string | null): string {
   return country?.label ?? normalized.toUpperCase();
 }
 
+function sanitizeSourceUrl(sourceUrl?: string | null, provider?: string | null): string | undefined {
+  const rawUrl = String(sourceUrl || '').trim();
+  if (!rawUrl) {
+    return undefined;
+  }
+
+  // AlphaVantage entries are market snapshots and only expose a generic homepage link.
+  if (String(provider || '').toLowerCase() === 'alphavantage') {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(rawUrl);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+
+    if (hostname === 'alphavantage.co') {
+      return undefined;
+    }
+
+    return rawUrl;
+  } catch {
+    return undefined;
+  }
+}
+
 function mapStoryToArticle(story: BackendStory): Article {
   const sourceImage = story.featuredMediaUrl || story.featured_media_url;
   const isRepresentativeImage = !sourceImage;
@@ -259,7 +309,7 @@ function mapStoryToArticle(story: BackendStory): Article {
     tags,
     location: story.location ?? getCountryLabel(story.countryCode),
     sourceCredibilityScore,
-    sourceUrl: story.sourceUrl ?? undefined,
+    sourceUrl: sanitizeSourceUrl(story.sourceUrl, story.provider),
     isRepresentativeImage,
   };
 }
@@ -611,7 +661,7 @@ export default function App() {
         const stats = normalizeReadActionStats(payload.stats);
 
         if (isMounted) {
-          setReadActionStats(stats);
+          setReadActionStats((previous) => mergeReadActionStats(previous, stats));
         }
       } catch {
         // Local Node API does not expose analytics endpoints yet; keep local fallback state.
@@ -695,10 +745,16 @@ export default function App() {
         next.readFullStory += 1;
       }
 
-      return {
+      const updated = {
         ...previous,
         [articleId]: next,
       };
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(READ_ACTION_STATS_STORAGE_KEY, JSON.stringify(updated));
+      }
+
+      return updated;
     });
 
     void trackReadActionOnApi(articleId, action);

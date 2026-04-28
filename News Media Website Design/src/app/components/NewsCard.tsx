@@ -35,20 +35,20 @@ export function NewsCard({ article, featured = false, onReadActionClick }: NewsC
     onReadActionClick?.(article.id, action);
   };
 
-  const readAction = article.sourceUrl ? (
-    <a
-      href={article.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() => trackReadAction('read-full-story')}
-      className="inline-flex items-center gap-2 text-white font-medium group-hover:gap-3 transition-all"
-    >
-      Read Full Story
-      <ArrowRight className="w-4 h-4" />
-    </a>
-  ) : (
+  const handleReadAction = (action: ReadActionType) => {
+    trackReadAction(action);
+
+    if (!article.sourceUrl) {
+      return;
+    }
+
+    window.open(article.sourceUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const readAction = (
     <button
-      onClick={() => trackReadAction('read-full-story')}
+      type="button"
+      onClick={() => handleReadAction('read-full-story')}
       className="inline-flex items-center gap-2 text-white font-medium group-hover:gap-3 transition-all"
     >
       Read Full Story
@@ -56,20 +56,10 @@ export function NewsCard({ article, featured = false, onReadActionClick }: NewsC
     </button>
   );
 
-  const readMoreAction = article.sourceUrl ? (
-    <a
-      href={article.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() => trackReadAction('read-more')}
-      className="inline-flex items-center gap-1.5 text-sm text-red-600 font-semibold group-hover:gap-2.5 transition-all"
-    >
-      Read More
-      <ArrowRight className="w-4 h-4" />
-    </a>
-  ) : (
+  const readMoreAction = (
     <button
-      onClick={() => trackReadAction('read-more')}
+      type="button"
+      onClick={() => handleReadAction('read-more')}
       className="inline-flex items-center gap-1.5 text-sm text-red-600 font-semibold group-hover:gap-2.5 transition-all"
     >
       Read More

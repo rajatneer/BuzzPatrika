@@ -421,7 +421,8 @@ async function fetchAlphaVantageSignal(category, countryCode) {
       categorySlug: category.slug,
       title: `${ticker} leads market momentum` ,
       summary: `${ticker} moved ${item.change_percentage || "N/A"} with volume ${item.volume || "N/A"}.`,
-      sourceUrl: "https://www.alphavantage.co/",
+      // AlphaVantage does not provide article-level URLs for this market snapshot endpoint.
+      sourceUrl: "",
       publishedAt: new Date().toISOString(),
       marketSignal: JSON.stringify(item),
       relevanceScore: 0.7,

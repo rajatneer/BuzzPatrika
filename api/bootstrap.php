@@ -483,7 +483,8 @@ function fetch_alpha_vantage_signal(array $category, string $countryCode, array 
             "categorySlug" => $category["slug"],
             "title" => $ticker . " leads market momentum",
             "summary" => $ticker . " moved " . ((string) ($item["change_percentage"] ?? "N/A")) . " with volume " . ((string) ($item["volume"] ?? "N/A")) . ".",
-            "sourceUrl" => "https://www.alphavantage.co/",
+            // AlphaVantage top gainers/losers is a market snapshot; no article permalink is available.
+            "sourceUrl" => "",
             "publishedAt" => now_iso(),
             "marketSignal" => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             "relevanceScore" => 0.7,
