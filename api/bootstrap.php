@@ -1079,8 +1079,8 @@ function list_stories(array $query): array
         ? trim((string) $query["status"])
         : "published";
 
-    $category = isset($query["category"]) ? trim((string) $query["category"]) : "";
-    $country = isset($query["country"]) ? sanitize_country_code((string) $query["country"]) : "";
+    $category = "trending";
+    $country = "in";
     $tag = isset($query["tag"]) ? strtolower(trim((string) $query["tag"])) : "";
     $location = isset($query["location"]) ? strtolower(trim((string) $query["location"])) : "";
     $slug = isset($query["slug"]) ? trim((string) $query["slug"]) : "";
@@ -1091,10 +1091,6 @@ function list_stories(array $query): array
     $limitRaw = $query["limit"] ?? 20;
     $limit = is_numeric($limitRaw) ? (int) $limitRaw : 20;
     $limit = max(1, min($limit, 100));
-
-    $maxAgeDaysRaw = $query["maxAgeDays"] ?? ($config["storiesMaxAgeDays"] ?? 7);
-    $maxAgeDays = sanitize_max_age_days($maxAgeDaysRaw);
-    $freshnessCutoffTs = time() - ($maxAgeDays * 24 * 60 * 60);
 
     $rows = [];
 
@@ -1150,21 +1146,6 @@ function list_stories(array $query): array
             if (strpos($haystack, $search) === false) {
                 continue;
             }
-        }
-
-        $freshnessCandidate = (string) (
-            $source["published_at"]
-            ?? $story["published_at"]
-            ?? $story["created_at"]
-            ?? now_iso()
-        );
-        $freshnessTs = strtotime($freshnessCandidate);
-        if ($freshnessTs === false) {
-            $freshnessTs = time();
-        }
-
-        if ($freshnessTs < $freshnessCutoffTs) {
-            continue;
         }
 
         $rows[] = to_story_row($story, $source);
