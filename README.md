@@ -86,11 +86,11 @@ Example cron command:
 	- `ALPHA_VANTAGE_DAILY_REQUEST_LIMIT=25`
 	- `SCHEDULER_CRON=0 * * * *` (default hourly)
 	- `PROVIDER_CACHE_TTL_HOURS=12`
-	- `STORIES_MAX_AGE_DAYS=7` (default freshness cap)
+	- `STORIES_MAX_AGE_DAYS=0` (default: no age cutoff; keeps older published stories visible)
 - Stories include SEO-focused metadata (`slug`, author/organization, publish/update dates, tags, location, credibility score, featured media).
 - The frontend emits dynamic meta tags and JSON-LD (`NewsArticle`/`ItemList`) for better search discoverability.
 - API supports metadata-aware filtering via `tag`, `location`, and `minCredibility` query parameters.
 - API exposes provider limit usage via `/api/provider-usage` for admin dashboards.
 - If primary API providers are rate-limited, backend falls back to Google News RSS (live).
-- Story responses are constrained to the latest news only (max last 7 days).
+- Story responses keep historical published stories by default (use `maxAgeDays` query only when you want a freshness window).
 - Story generation in this phase is rules-based; next phase should add model-driven generation and moderation workflows.

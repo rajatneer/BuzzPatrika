@@ -45,9 +45,10 @@ app.get("/api/stories", (request, response) => {
     minCredibility: request.query.minCredibility,
     slug: request.query.slug,
     q: request.query.q,
+    excludeProvider: request.query.excludeProvider,
     status: request.query.status || "published",
     limit: request.query.limit,
-    maxAgeDays: request.query.maxAgeDays || env.storiesMaxAgeDays
+    maxAgeDays: request.query.maxAgeDays ?? env.storiesMaxAgeDays
   });
 
   response.json({ stories });

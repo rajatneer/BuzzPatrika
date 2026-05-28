@@ -42,6 +42,7 @@ const GOOGLE_RSS_LOCALE_BY_COUNTRY = {
 
 const PROVIDER_CACHE_TTL_MS = env.providerCacheTtlHours * 60 * 60 * 1000;
 const GNEWS_MIN_REQUEST_INTERVAL_MS = 1200;
+const INGEST_FRESHNESS_DAYS = 3;
 const providerCache = new Map();
 const providerDailyBudgetState = new Map();
 let lastGNewsRequestAtMs = 0;
@@ -170,6 +171,10 @@ function sanitizeCountryCode(countryCode) {
 }
 
 function buildCountryAwareQuery(category, countryCode) {
+  if (countryCode === "in" && category.slug === "trending") {
+    return "india breaking news politics economy policy market updates";
+  }
+
   const baseQuery = category.newsQuery.replace(/\bindia\b/gi, "").replace(/\s+/g, " ").trim();
   const countryLabel = COUNTRY_LABEL_BY_CODE[countryCode] || countryCode.toUpperCase();
   const categoryHint = category.displayName.toLowerCase();
@@ -182,7 +187,7 @@ function buildCountryAwareQuery(category, countryCode) {
 }
 
 function filterToFreshItems(items) {
-  const cutoff = Date.now() - (env.storiesMaxAgeDays * 24 * 60 * 60 * 1000);
+  const cutoff = Date.now() - (INGEST_FRESHNESS_DAYS * 24 * 60 * 60 * 1000);
 
   return items.filter((item) => {
     const parsedMs = new Date(item.publishedAt || "").getTime();
@@ -368,6 +373,83 @@ async function fetchGNewsItems(category, limit, countryCode) {
   return freshItems;
 }
 
+async function fetchNewsDataItems(category, limit, countryCode) {
+  if (!env.newsDataApiKey) {
+    return [];
+  }
+
+  const normalizedCountryCode = sanitizeCountryCode(countryCode);
+  const cacheKey = `newsdata:${normalizedCountryCode}:${category.slug}:${limit}`;
+  const cachedItems = getCachedProviderItems(cacheKey);
+  if (cachedItems) {
+    return cachedItems;
+  }
+
+  if (!canConsumeProviderRequest("newsdata", env.newsDataDailyRequestLimit)) {
+    console.warn(`NewsData provider skipped for ${category.slug}: daily request limit (${env.newsDataDailyRequestLimit}) reached`);
+    return [];
+  }
+
+  const query = buildCountryAwareQuery(category, normalizedCountryCode);
+  const params = new URLSearchParams({
+    apikey: env.newsDataApiKey,
+    country: normalizedCountryCode,
+    language: "en",
+    category: category.slug === "tech" ? "technology" : (NEWSAPI_CATEGORY_BY_SLUG[category.slug] || "top"),
+    q: query
+  });
+
+  // NewsData free plans typically return smaller pages; keep explicit and bounded.
+  params.set("size", String(Math.max(10, Math.min(limit, 50))));
+
+  const response = await fetch(`https://newsdata.io/api/1/latest?${params.toString()}`);
+  if (!response.ok) {
+    if (response.status === 429) {
+      markProviderBudgetExhausted("newsdata", env.newsDataDailyRequestLimit);
+    }
+    throw new Error(`NewsData request failed with ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const statusText = String(payload?.status || "").toLowerCase();
+  if (statusText && statusText !== "success") {
+    const payloadText = JSON.stringify(payload).toLowerCase();
+    if (payloadText.includes("rate limit") || payloadText.includes("requests")) {
+      markProviderBudgetExhausted("newsdata", env.newsDataDailyRequestLimit);
+    }
+    return [];
+  }
+
+  const articles = Array.isArray(payload?.results) ? payload.results : [];
+  const mapped = articles.map((article) => {
+    const sourceUrl = article.link || article.url || "";
+    const stableId = article.article_id || article.articleId || sourceUrl || `${article.title || "newsdata"}:${article.pubDate || ""}`;
+    const digest = crypto.createHash("sha1").update(`newsdata:${stableId}`).digest("hex");
+
+    return {
+      externalId: digest,
+      provider: "newsdata",
+      countryCode: normalizedCountryCode,
+      categorySlug: category.slug,
+      title: article.title || "Untitled story",
+      summary: article.description || article.content || "",
+      sourceUrl,
+      publishedAt: article.pubDate || article.publishedAt || new Date().toISOString(),
+      marketSignal: null,
+      relevanceScore: 0.81,
+      rawPayload: JSON.stringify(article),
+      ingestionStatus: "ingested"
+    };
+  });
+
+  const freshItems = filterToFreshItems(mapped);
+  if (freshItems.length > 0) {
+    setCachedProviderItems(cacheKey, freshItems);
+  }
+
+  return freshItems;
+}
+
 async function fetchAlphaVantageSignal(category, countryCode) {
   const normalizedCountryCode = sanitizeCountryCode(countryCode);
   if (normalizedCountryCode !== "in") {
@@ -512,7 +594,7 @@ async function fetchGoogleNewsRssItems(category, limit, countryCode) {
 export async function fetchSourceItemsForCategory(category, limit, countryCode) {
   const normalizedCountryCode = sanitizeCountryCode(countryCode);
 
-  const [newsItems, gNewsItems, marketItems] = await Promise.all([
+  const [newsItems, gNewsItems, newsDataItems, marketItems] = await Promise.all([
     fetchNewsApiItems(category, limit, normalizedCountryCode).catch((error) => {
       console.warn(`News provider failed for ${category.slug}: ${error.message}`);
       return [];
@@ -521,8 +603,12 @@ export async function fetchSourceItemsForCategory(category, limit, countryCode) 
       console.warn(`GNews provider failed for ${category.slug}: ${error.message}`);
       return [];
     }),
-    // Alpha Vantage market movers are broad signals and do not need to run per category.
-    category.slug === "trending"
+    fetchNewsDataItems(category, limit, normalizedCountryCode).catch((error) => {
+      console.warn(`NewsData provider failed for ${category.slug}: ${error.message}`);
+      return [];
+    }),
+    // Alpha Vantage market movers are best for business/market sections, not headline-trending feeds.
+    category.slug === "business"
       ? fetchAlphaVantageSignal(category, normalizedCountryCode).catch((error) => {
           console.warn(`Market provider failed for ${category.slug}: ${error.message}`);
           return [];
@@ -530,7 +616,7 @@ export async function fetchSourceItemsForCategory(category, limit, countryCode) 
       : Promise.resolve([]),
   ]);
 
-  const combined = [...newsItems, ...gNewsItems, ...marketItems];
+  const combined = [...newsItems, ...gNewsItems, ...newsDataItems, ...marketItems];
   if (combined.length > 0) {
     return combined;
   }
@@ -546,6 +632,7 @@ export async function fetchSourceItemsForCategory(category, limit, countryCode) 
 export function getProviderUsageSnapshot() {
   const newsUsage = getProviderUsageRecord("newsapi", env.newsApiDailyRequestLimit);
   const gNewsUsage = getProviderUsageRecord("gnews", env.gNewsDailyRequestLimit);
+  const newsDataUsage = getProviderUsageRecord("newsdata", env.newsDataDailyRequestLimit);
   const alphaUsage = getProviderUsageRecord("alphavantage", env.alphaVantageDailyRequestLimit);
 
   return {
@@ -564,6 +651,13 @@ export function getProviderUsageSnapshot() {
         limit: gNewsUsage.limit,
         remaining: Math.max(0, gNewsUsage.limit - gNewsUsage.count),
         capped: gNewsUsage.count >= gNewsUsage.limit
+      },
+      {
+        provider: "newsdata",
+        used: newsDataUsage.count,
+        limit: newsDataUsage.limit,
+        remaining: Math.max(0, newsDataUsage.limit - newsDataUsage.count),
+        capped: newsDataUsage.count >= newsDataUsage.limit
       },
       {
         provider: "alphavantage",

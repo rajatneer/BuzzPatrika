@@ -81,7 +81,7 @@ export function createGeneratedStory(story) {
   return result.lastInsertRowid;
 }
 
-export function listStories({ category, country, tag, location, minCredibility, slug, q, status = "published", limit = 20, maxAgeDays = 7 }) {
+export function listStories({ category, country, tag, location, minCredibility, slug, q, status = "published", limit = 20, maxAgeDays = null, excludeProvider = null }) {
   const db = getDb();
 
   const conditions = [];
@@ -131,13 +131,25 @@ export function listStories({ category, country, tag, location, minCredibility, 
     values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
 
+  if (excludeProvider) {
+    const blockedProviders = String(excludeProvider)
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+
+    for (const blockedProvider of blockedProviders) {
+      conditions.push("LOWER(COALESCE(si.provider, '')) <> ?");
+      values.push(blockedProvider);
+    }
+  }
+
   const parsedMaxAgeDays = Number(maxAgeDays);
-  const freshnessDays = Number.isFinite(parsedMaxAgeDays)
-    ? Math.min(7, Math.max(1, Math.floor(parsedMaxAgeDays)))
-    : 7;
-  const freshnessCutoffIso = new Date(Date.now() - (freshnessDays * 24 * 60 * 60 * 1000)).toISOString();
-  conditions.push("COALESCE(si.published_at, gs.published_at, gs.created_at) >= ?");
-  values.push(freshnessCutoffIso);
+  if (Number.isFinite(parsedMaxAgeDays) && parsedMaxAgeDays > 0) {
+    const freshnessDays = Math.floor(parsedMaxAgeDays);
+    const freshnessCutoffIso = new Date(Date.now() - (freshnessDays * 24 * 60 * 60 * 1000)).toISOString();
+    conditions.push("COALESCE(si.published_at, gs.published_at, gs.created_at) >= ?");
+    values.push(freshnessCutoffIso);
+  }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 

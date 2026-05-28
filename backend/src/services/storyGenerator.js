@@ -97,7 +97,7 @@ export function generateStoryFromSource(sourceItem, { autoPublish }) {
   const featuredMediaUrl = payload?.urlToImage || payload?.image || null;
   const credibilityScore = toCredibilityScore(sourceItem.provider, sourceItem.relevanceScore);
   const tags = buildTags(sourceItem, payload);
-  const publishedAt = autoPublish ? now : (sourceItem.publishedAt || now);
+  const publishedAt = sourceItem.publishedAt || now;
 
   const storyBody = [
     `This automated story was generated for the ${categoryLabel} desk based on the latest source feed item.`,

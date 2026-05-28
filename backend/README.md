@@ -38,7 +38,7 @@ Backend foundation for automated category-based news ingestion and story generat
 
 - `GET /api/health`
 - `GET /api/categories`
-- `GET /api/stories?country=in&category=tech&tag=ai&location=india&minCredibility=0.7&q=market&status=published&limit=20&maxAgeDays=7`
+- `GET /api/stories?country=in&category=trending&status=published&limit=30&maxAgeDays=0`
 - `GET /api/jobs?limit=20`
 - `GET /api/provider-usage`
 - `POST /api/pipeline/run` with optional JSON body: `{ "country": "in", "category": "tech" }`
@@ -57,7 +57,7 @@ Each generated story now includes metadata fields designed for SEO and filtering
 
 ## Notes
 
-- Stories are filtered to recent updates only (last 7 days max by default via `STORIES_MAX_AGE_DAYS`).
+- Stories keep historical published entries by default (`STORIES_MAX_AGE_DAYS=0`); pass a positive `maxAgeDays` only when you need a freshness filter.
 - Country-aware ingestion defaults to India (`in`) and can be overridden per pipeline run.
 - Provider calls are capped per UTC day using `*_DAILY_REQUEST_LIMIT` values, so free-plan quotas are not exceeded.
 - NewsAPI and GNews are both used as primary live-news providers (when keys are configured).

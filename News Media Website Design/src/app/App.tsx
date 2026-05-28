@@ -321,7 +321,7 @@ export default function App() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
   const [selectedCountry, setSelectedCountry] = useState('in');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>('trending');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingStories, setIsLoadingStories] = useState(false);
   const [storiesError, setStoriesError] = useState<string | null>(null);
@@ -503,12 +503,18 @@ export default function App() {
 
         const params = new URLSearchParams({
           status: 'published',
-          limit: '30',
+          limit: '50',
           country: selectedCountry,
+          maxAgeDays: '0',
         });
 
         if (selectedCategory) {
           params.set('category', selectedCategory);
+        }
+
+        const isTrendingFeed = !selectedCategory || selectedCategory === 'trending';
+        if (isTrendingFeed) {
+          params.set('excludeProvider', 'alphavantage');
         }
 
         const q = searchQuery.trim();
