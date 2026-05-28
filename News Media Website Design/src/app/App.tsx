@@ -320,7 +320,7 @@ export default function App() {
   const [isAdminView, setIsAdminView] = useState(false);
   const [articles, setArticles] = useState<Article[]>([]);
   const [categories, setCategories] = useState<NewsCategory[]>([]);
-  const [selectedCountry, setSelectedCountry] = useState('in');
+  const [selectedCountry] = useState('in');
   const [selectedCategory, setSelectedCategory] = useState<string | null>('trending');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingStories, setIsLoadingStories] = useState(false);
@@ -504,8 +504,9 @@ export default function App() {
         const params = new URLSearchParams({
           status: 'published',
           limit: '50',
-          country: selectedCountry,
-          maxAgeDays: '0',
+          country: 'in',
+          maxAgeDays: '2',
+          minCredibility: '0.72',
         });
 
         if (selectedCategory) {
@@ -515,6 +516,7 @@ export default function App() {
         const isTrendingFeed = !selectedCategory || selectedCategory === 'trending';
         if (isTrendingFeed) {
           params.set('excludeProvider', 'alphavantage');
+          params.set('q', 'india');
         }
 
         const q = searchQuery.trim();
@@ -561,7 +563,7 @@ export default function App() {
       controller.abort();
       window.clearTimeout(timerId);
     };
-  }, [refreshTick, searchQuery, selectedCategory, selectedCountry]);
+  }, [refreshTick, searchQuery, selectedCategory]);
 
   const handleLogin = (username: string, password: string) => {
     void username;
@@ -638,7 +640,7 @@ export default function App() {
     };
 
     void runRefresh();
-  }, [selectedCategory, selectedCountry]);
+  }, [selectedCategory]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -780,7 +782,7 @@ export default function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onCategorySelect={setSelectedCategory}
-        onCountrySelect={setSelectedCountry}
+        onCountrySelect={() => {}}
         onRefreshStories={handleRefreshStories}
         isRefreshingStories={isRefreshingStories}
         lastUpdatedLabel={lastUpdatedLabel}

@@ -43,6 +43,39 @@ const GOOGLE_RSS_LOCALE_BY_COUNTRY = {
 const PROVIDER_CACHE_TTL_MS = env.providerCacheTtlHours * 60 * 60 * 1000;
 const GNEWS_MIN_REQUEST_INTERVAL_MS = 1200;
 const INGEST_FRESHNESS_DAYS = 3;
+const INDIA_INTEREST_KEYWORDS = [
+  "india",
+  "indian",
+  "modi",
+  "parliament",
+  "delhi",
+  "mumbai",
+  "bengaluru",
+  "nse",
+  "bse",
+  "rupee",
+  "rbi",
+  "sebi",
+  "gst",
+  "supreme court",
+  "cabinet",
+  "policy",
+  "election",
+  "adani",
+  "ambani",
+  "startup india",
+  "bharat"
+];
+const LOW_INTEREST_PATTERNS = [
+  "top 100",
+  "to watch in 2026",
+  "market & investments trends",
+  "weekly outlook",
+  "what's happening this week",
+  "what’s happening this week",
+  "explainer",
+  "history of"
+];
 const providerCache = new Map();
 const providerDailyBudgetState = new Map();
 let lastGNewsRequestAtMs = 0;
@@ -195,6 +228,39 @@ function filterToFreshItems(items) {
   });
 }
 
+function isIndiaInterestingItem(item) {
+  const title = String(item?.title || "").toLowerCase();
+  const summary = String(item?.summary || "").toLowerCase();
+  const sourceUrl = String(item?.sourceUrl || "").toLowerCase();
+  const text = `${title} ${summary} ${sourceUrl}`.trim();
+  const countryCode = String(item?.countryCode || "").toLowerCase();
+  const hasIndiaContext = (
+    countryCode === "in"
+    || INDIA_INTEREST_KEYWORDS.some((keyword) => text.includes(keyword))
+    || sourceUrl.includes(".in/")
+    || sourceUrl.endsWith(".in")
+  );
+
+  if (!hasIndiaContext) {
+    return false;
+  }
+
+  const isLowInterest = LOW_INTEREST_PATTERNS.some((pattern) => text.includes(pattern));
+  if (isLowInterest) {
+    return false;
+  }
+
+  return true;
+}
+
+function filterToIndiaInterestingItems(items, countryCode) {
+  if (String(countryCode || "").toLowerCase() !== "in") {
+    return items;
+  }
+
+  return items.filter((item) => isIndiaInterestingItem(item));
+}
+
 async function fetchNewsApiItems(category, limit, countryCode) {
   if (!env.newsApiKey) {
     return [];
@@ -259,12 +325,13 @@ async function fetchNewsApiItems(category, limit, countryCode) {
   });
 
   const freshItems = filterToFreshItems(mapped);
+  const focusedItems = filterToIndiaInterestingItems(freshItems, normalizedCountryCode);
 
-  if (freshItems.length > 0) {
-    setCachedProviderItems(cacheKey, freshItems);
+  if (focusedItems.length > 0) {
+    setCachedProviderItems(cacheKey, focusedItems);
   }
 
-  return freshItems;
+  return focusedItems;
 }
 
 async function fetchGNewsItems(category, limit, countryCode) {
@@ -365,12 +432,13 @@ async function fetchGNewsItems(category, limit, countryCode) {
   });
 
   const freshItems = filterToFreshItems(mapped);
+  const focusedItems = filterToIndiaInterestingItems(freshItems, normalizedCountryCode);
 
-  if (freshItems.length > 0) {
-    setCachedProviderItems(cacheKey, freshItems);
+  if (focusedItems.length > 0) {
+    setCachedProviderItems(cacheKey, focusedItems);
   }
 
-  return freshItems;
+  return focusedItems;
 }
 
 async function fetchNewsDataItems(category, limit, countryCode) {
@@ -443,11 +511,12 @@ async function fetchNewsDataItems(category, limit, countryCode) {
   });
 
   const freshItems = filterToFreshItems(mapped);
-  if (freshItems.length > 0) {
-    setCachedProviderItems(cacheKey, freshItems);
+  const focusedItems = filterToIndiaInterestingItems(freshItems, normalizedCountryCode);
+  if (focusedItems.length > 0) {
+    setCachedProviderItems(cacheKey, focusedItems);
   }
 
-  return freshItems;
+  return focusedItems;
 }
 
 async function fetchAlphaVantageSignal(category, countryCode) {
@@ -584,11 +653,14 @@ async function fetchGoogleNewsRssItems(category, limit, countryCode) {
     };
   });
 
-  if (mapped.length > 0) {
-    setCachedProviderItems(cacheKey, mapped);
+  const freshItems = filterToFreshItems(mapped);
+  const focusedItems = filterToIndiaInterestingItems(freshItems, normalizedCountryCode);
+
+  if (focusedItems.length > 0) {
+    setCachedProviderItems(cacheKey, focusedItems);
   }
 
-  return mapped;
+  return focusedItems;
 }
 
 export async function fetchSourceItemsForCategory(category, limit, countryCode) {

@@ -1,5 +1,28 @@
 import { getDb } from "../db/connection.js";
 
+function isBestIndiaStory(story) {
+  const title = String(story.headline || "").toLowerCase();
+  const summary = String(story.summary || "").toLowerCase();
+  const sourceUrl = String(story.sourceUrl || "").toLowerCase();
+  const text = `${title} ${summary} ${sourceUrl}`;
+  const countryCode = String(story.countryCode || "").toLowerCase();
+  const credibility = Number(story.sourceCredibilityScore || 0);
+  const isRecent = Number.isFinite(new Date(story.publishedAt || "").getTime())
+    && (Date.now() - new Date(story.publishedAt).getTime()) <= (2 * 24 * 60 * 60 * 1000);
+
+  const indiaSignals = [
+    "india", "indian", "modi", "rbi", "sebi", "nse", "bse", "parliament", "supreme court", "gst", "rupee"
+  ];
+  const lowValueSignals = [
+    "top 100", "to watch in 2026", "market & investments trends", "weekly outlook", "explainer", "history of"
+  ];
+
+  const hasIndiaContext = countryCode === "in" || indiaSignals.some((k) => text.includes(k)) || sourceUrl.includes(".in/");
+  const isLowValue = lowValueSignals.some((k) => text.includes(k));
+
+  return hasIndiaContext && !isLowValue && isRecent && credibility >= 0.72;
+}
+
 export function createGeneratedStory(story) {
   const db = getDb();
 
@@ -206,8 +229,17 @@ export function listStories({ category, country, tag, location, minCredibility, 
   values.push(Math.max(1, Math.min(Number(limit) || 20, 100)));
 
   const rows = db.prepare(sql).all(...values);
-  return rows.map((row) => ({
+  const mappedRows = rows.map((row) => ({
     ...row,
     tags: row.tagsJson ? JSON.parse(row.tagsJson) : []
   }));
+
+  const strictIndiaMode = String(country || "").toLowerCase() === "in";
+  if (!strictIndiaMode) {
+    return mappedRows;
+  }
+
+  return mappedRows
+    .filter((row) => isBestIndiaStory(row))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 20, 100)));
 }
