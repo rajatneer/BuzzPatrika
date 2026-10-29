@@ -36,7 +36,6 @@ const PUBLISHER_FEEDS = [
         ["name" => "The Hindu", "url" => "https://www.thehindu.com/sport/feeder/default.rss"],
     ],
     "news" => [
-        ["name" => "PIB", "url" => "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"],
         ["name" => "The Hindu", "url" => "https://www.thehindu.com/news/national/feeder/default.rss"],
     ],
 ];
@@ -647,7 +646,11 @@ function feed_entries_to_source_items(array $entries, array $category, string $c
             continue;
         }
 
-        $publishedAt = normalize_published_at((string) ($entry["pubDate"] ?? ""));
+        // Skip undated items: without a real publish time they would always look like the latest news.
+        if (trim((string) ($entry["pubDate"] ?? "")) === "" || strtotime((string) $entry["pubDate"]) === false) {
+            continue;
+        }
+        $publishedAt = normalize_published_at((string) $entry["pubDate"]);
         if (time() - (int) strtotime($publishedAt) > $maxAgeSeconds) {
             continue;
         }

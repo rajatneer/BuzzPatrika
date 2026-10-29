@@ -24,11 +24,11 @@ Stories keep their original publish time, so older stories never jump back to th
 
 ## News sources (free)
 
-- Direct publisher RSS feeds per category (`PUBLISHER_FEEDS` in `bootstrap.php`): ET, Business Standard, Livemint, Moneycontrol, Inc42, The Hindu, NDTV, PIB.
+- Direct publisher RSS feeds per category (`PUBLISHER_FEEDS` in `bootstrap.php`): ET, Business Standard, Livemint, Moneycontrol, Inc42, The Hindu, NDTV.
 - Google News RSS search for broader coverage.
 - NewsAPI only if you set `newsApiKey` (its free plan does not allow production sites).
 
-A feed that fails is skipped and logged to `api/logs/api.log`. To change feeds, set `publisherFeeds` in `config.local.php`.
+Items without a publish date are skipped. A feed that fails is skipped and logged to `api/logs/api.log`. To change feeds, set `publisherFeeds` in `config.local.php`.
 
 ## Market data (free)
 
