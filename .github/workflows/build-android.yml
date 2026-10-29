@@ -36,7 +36,7 @@ jobs:
           fi
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -50,7 +50,15 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon bundleRelease assembleRelease
+          set -o pipefail
+          if ! ./gradlew --no-daemon --stacktrace bundleRelease assembleRelease 2>&1 | tee gradle.log; then
+            # Surface Gradle's own explanation as annotations.
+            awk '/What went wrong:/{f=1} f{print} /Try:/{exit}' gradle.log | head -25 | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+            grep -E "^e: |error:" gradle.log | head -10 | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          fi
 
       - name: Sign outputs
         if: steps.secrets.outputs.sign == 'true'
