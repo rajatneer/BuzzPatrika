@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.buzzpatrika.app",
+      "sha256_cert_fingerprints": [
+        "A4:73:F0:84:55:D5:5B:25:26:EE:79:61:C7:94:CE:39:2A:C4:E7:F5:ED:3B:B9:5A:96:5D:1D:89:C9:6F:9D:D7"
+      ]
+    }
+  }
+]

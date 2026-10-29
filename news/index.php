@@ -108,6 +108,10 @@ function render_head(string $title, string $description, string $canonical, ?str
 <meta name="twitter:image" content="<?= h($image) ?>">
 <?php endif; ?>
 <meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <meta name="twitter:title" content="<?= h($title) ?>">
 <meta name="twitter:description" content="<?= h($description) ?>">
 <?php foreach ($extra as $line) { echo $line, "\n"; } ?>
@@ -176,6 +180,7 @@ function render_foot(): void
 </main>
 <footer>© <?= date("Y") ?> BuzzPatrika. Headlines link to the original publishers.</footer>
 <script>
+  if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js").catch(function () {}); }
   document.querySelectorAll("[data-copy]").forEach(function (button) {
     button.addEventListener("click", function () {
       var url = button.getAttribute("data-copy");
