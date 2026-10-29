@@ -9,5 +9,7 @@ json_response([
     "service" => $config["serviceName"],
     "schedulerCron" => $config["schedulerCron"],
     "autoPublish" => (bool) $config["autoPublish"],
+    "lastPipelineRunAt" => last_pipeline_run_at(),
+    "staleRefreshMinutes" => $config["staleRefreshMinutes"],
     "timestamp" => now_iso(),
 ]);

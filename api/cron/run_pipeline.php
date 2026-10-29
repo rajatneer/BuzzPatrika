@@ -5,12 +5,12 @@ require_once dirname(__DIR__) . "/bootstrap.php";
 
 try {
     $config = app_config();
-    $stats = run_pipeline([
+    $stats = run_pipeline_exclusive([
         "countryCode" => $config["defaultCountryCode"],
     ]);
 
     json_response([
-        "message" => "Scheduled pipeline run completed",
+        "message" => $stats === null ? "Skipped: another run is in progress" : "Scheduled pipeline run completed",
         "stats" => $stats,
     ]);
 } catch (Throwable $error) {
