@@ -1,0 +1,82 @@
+name: Build Android app
+
+'on':
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-android.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'buzzpatrika' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check signing secrets
+        id: secrets
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD secrets are not set. Building only, without signing."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0'
+
+      - name: Build release bundle and APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon bundleRelease assembleRelease
+
+      - name: Sign outputs
+        if: steps.secrets.outputs.sign == 'true'
+        working-directory: android
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.keystore"
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p dist
+
+          # Play Store bundle (.aab), signed with the upload key.
+          cp app/build/outputs/bundle/release/app-release.aab dist/buzzpatrika.aab
+          jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore "$RUNNER_TEMP/upload.keystore" -storepass "$KEYSTORE_PASSWORD" \
+            dist/buzzpatrika.aab "$KEY_ALIAS"
+
+          # Installable APK for testing on a phone.
+          "$BT/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk dist/aligned.apk
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/upload.keystore" --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" --out dist/buzzpatrika.apk dist/aligned.apk
+          rm -f dist/aligned.apk dist/*.idsig "$RUNNER_TEMP/upload.keystore"
+          "$BT/apksigner" verify dist/buzzpatrika.apk
+
+      - name: Upload app files
+        if: steps.secrets.outputs.sign == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: buzzpatrika-android
+          path: android/dist/
+          retention-days: 30

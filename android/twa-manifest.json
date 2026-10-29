@@ -1,0 +1,56 @@
+{
+  "packageId": "com.buzzpatrika.app",
+  "host": "buzzpatrika.com",
+  "name": "BuzzPatrika – India News & Markets",
+  "launcherName": "BuzzPatrika",
+  "display": "standalone",
+  "themeColor": "#0F172A",
+  "themeColorDark": "#0F172A",
+  "navigationColor": "#0F172A",
+  "navigationColorDark": "#0F172A",
+  "navigationDividerColor": "#0F172A",
+  "navigationDividerColorDark": "#0F172A",
+  "backgroundColor": "#0F172A",
+  "enableNotifications": false,
+  "startUrl": "/?source=android",
+  "iconUrl": "https://buzzpatrika.com/icons/icon-512.png",
+  "maskableIconUrl": "https://buzzpatrika.com/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "buzzpatrika"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "Business & Markets",
+      "shortName": "Business",
+      "url": "/news/?category=business",
+      "chosenIconUrl": "https://buzzpatrika.com/icons/icon-192.png"
+    },
+    {
+      "name": "Latest News",
+      "shortName": "Latest",
+      "url": "/news/",
+      "chosenIconUrl": "https://buzzpatrika.com/icons/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://buzzpatrika.com/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "appVersion": "1.0.0",
+  "webManifestUrl": "https://buzzpatrika.com/manifest.webmanifest"
+}
