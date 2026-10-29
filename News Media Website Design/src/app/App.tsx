@@ -3,6 +3,7 @@ import { Header, NewsCategory, NewsCountry } from './components/Header';
 import { NewsFeed } from './components/NewsFeed';
 import { AdminDashboard } from './components/AdminDashboard';
 import { LoginModal } from './components/LoginModal';
+import { MarketTicker } from './components/MarketTicker';
 import { Article, ReadActionType } from './components/NewsCard';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (
@@ -16,7 +17,8 @@ const SITE_URL = (
   import.meta.env.VITE_SITE_URL
   ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5500')
 ).replace(/\/+$/, '');
-const AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+// The API refreshes itself in the background when stale, so polling keeps the feed close to real time.
+const AUTO_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 const READ_ACTION_STATS_STORAGE_KEY = 'buzzpatrika-read-action-stats-v1';
 
 interface ReadActionCounts {
@@ -515,7 +517,6 @@ export default function App() {
 
         const isTrendingFeed = !selectedCategory || selectedCategory === 'trending';
         if (isTrendingFeed) {
-          params.set('excludeProvider', 'alphavantage');
           params.set('q', 'india');
         }
 
@@ -526,6 +527,7 @@ export default function App() {
 
         const response = await fetch(`${API_BASE_URL}/stories?${params.toString()}`, {
           signal: controller.signal,
+          cache: 'no-store',
         });
 
         if (!response.ok) {
@@ -644,12 +646,23 @@ export default function App() {
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      setIsRefreshingStories(true);
+      // Skip polling while the tab is in the background.
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       setRefreshTick((value) => value + 1);
     }, AUTO_REFRESH_INTERVAL_MS);
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setRefreshTick((value) => value + 1);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 
@@ -787,6 +800,8 @@ export default function App() {
         isRefreshingStories={isRefreshingStories}
         lastUpdatedLabel={lastUpdatedLabel}
       />
+
+      {!isAdminView && <MarketTicker apiBaseUrl={API_BASE_URL} />}
 
       {isAdminView ? (
         <AdminDashboard

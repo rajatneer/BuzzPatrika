@@ -30,8 +30,8 @@ interface AdminDashboardProps {
 interface ProviderUsageItem {
   provider: string;
   used: number;
-  limit: number;
-  remaining: number;
+  limit: number | null;
+  remaining: number | null;
   capped: boolean;
 }
 
@@ -130,8 +130,9 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
       return 0;
     }
 
-    const totalUsed = providerUsage.reduce((sum, item) => sum + item.used, 0);
-    const totalLimit = providerUsage.reduce((sum, item) => sum + item.limit, 0);
+    const metered = providerUsage.filter((item) => typeof item.limit === 'number' && item.limit > 0);
+    const totalUsed = metered.reduce((sum, item) => sum + item.used, 0);
+    const totalLimit = metered.reduce((sum, item) => sum + (item.limit ?? 0), 0);
     if (totalLimit === 0) {
       return 0;
     }
@@ -312,13 +313,16 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {providerUsage.map((item) => {
-                const percent = item.limit > 0 ? Math.min(100, Math.round((item.used / item.limit) * 100)) : 0;
+                const isUnlimited = item.limit === null || item.limit === undefined;
+                const percent = !isUnlimited && (item.limit ?? 0) > 0
+                  ? Math.min(100, Math.round((item.used / (item.limit ?? 1)) * 100))
+                  : 0;
                 return (
                   <div key={item.provider} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-sm font-semibold text-slate-800">{item.provider}</p>
                       <p className={`text-xs font-semibold ${item.capped ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {item.used}/{item.limit}
+                        {isUnlimited ? `${item.used} today` : `${item.used}/${item.limit}`}
                       </p>
                     </div>
                     <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mb-2">
@@ -327,7 +331,9 @@ export function AdminDashboard({ articles, onAddArticle, onUpdateArticle, onDele
                         style={{ width: `${percent}%` }}
                       />
                     </div>
-                    <p className="text-xs text-slate-500">Remaining today: {item.remaining}</p>
+                    <p className="text-xs text-slate-500">
+                      {isUnlimited ? 'Free source, no daily limit' : `Remaining today: ${item.remaining}`}
+                    </p>
                   </div>
                 );
               })}

@@ -50,6 +50,7 @@ jobs:
           mkdir -p deploy
           cp -R "News Media Website Design/dist/." deploy/
           cp -R api deploy/api
+          rm -f deploy/api/data/*.json deploy/api/data/*.lock deploy/api/logs/*.log deploy/api/config.local.php
           if [ -d pages ]; then cp -R pages deploy/pages; fi
           if [ -f robots.txt ]; then cp robots.txt deploy/; fi
           if [ -f sitemap.xml ]; then cp sitemap.xml deploy/; fi
@@ -65,3 +66,12 @@ jobs:
           local-dir: deploy/
           server-dir: /public_html/
           dangerous-clean-slate: false
+          # Never upload or delete live server data (stories, market cache, logs, server config).
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            api/data/*.json
+            api/data/*.lock
+            api/logs/*.log
+            api/config.local.php

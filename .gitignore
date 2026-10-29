@@ -1,0 +1,6 @@
+# Live data written by the PHP API on the server. Never commit or deploy it.
+api/data/*.json
+api/data/*.lock
+api/logs/*.log
+api/config.local.php
+node_modules/

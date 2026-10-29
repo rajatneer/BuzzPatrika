@@ -42,7 +42,7 @@ export function NewsFeed({
           ) : null}
         </div>
 
-        {isLoading ? (
+        {isLoading && articles.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-20 h-20 bg-gradient-to-br from-orange-100 to-red-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
               <Flame className="w-10 h-10 text-red-600" />

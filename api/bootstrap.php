@@ -8,6 +8,49 @@ const API_DATA_DIR = API_ROOT . "/data";
 const API_LOG_DIR = API_ROOT . "/logs";
 const API_STORE_FILE = API_DATA_DIR . "/store.json";
 
+// Free publisher RSS feeds (no key, no quota). Each feed failure is non-fatal.
+const PUBLISHER_FEEDS = [
+    "trending" => [
+        ["name" => "The Economic Times", "url" => "https://economictimes.indiatimes.com/rssfeedstopstories.cms"],
+        ["name" => "NDTV", "url" => "https://feeds.feedburner.com/ndtvnews-top-stories"],
+    ],
+    "business" => [
+        ["name" => "ET Markets", "url" => "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"],
+        ["name" => "Business Standard", "url" => "https://www.business-standard.com/rss/markets-106.rss"],
+        ["name" => "Livemint", "url" => "https://www.livemint.com/rss/markets"],
+        ["name" => "Moneycontrol", "url" => "https://www.moneycontrol.com/rss/latestnews.xml"],
+    ],
+    "tech" => [
+        ["name" => "ET Tech", "url" => "https://economictimes.indiatimes.com/tech/rssfeeds/13357270.cms"],
+        ["name" => "Livemint", "url" => "https://www.livemint.com/rss/technology"],
+    ],
+    "startup" => [
+        ["name" => "Inc42", "url" => "https://inc42.com/feed/"],
+        ["name" => "ET Startups", "url" => "https://economictimes.indiatimes.com/tech/startups/rssfeeds/78570540.cms"],
+    ],
+    "entertainment" => [
+        ["name" => "The Hindu", "url" => "https://www.thehindu.com/entertainment/feeder/default.rss"],
+    ],
+    "social-media" => [],
+    "sports" => [
+        ["name" => "The Hindu", "url" => "https://www.thehindu.com/sport/feeder/default.rss"],
+    ],
+    "news" => [
+        ["name" => "PIB", "url" => "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"],
+        ["name" => "The Hindu", "url" => "https://www.thehindu.com/news/national/feeder/default.rss"],
+    ],
+];
+
+const MARKET_SYMBOLS = [
+    ["symbol" => "^NSEI", "name" => "Nifty 50"],
+    ["symbol" => "^BSESN", "name" => "Sensex"],
+    ["symbol" => "^NSEBANK", "name" => "Bank Nifty"],
+    ["symbol" => "INR=X", "name" => "USD/INR"],
+];
+
+const API_MARKET_CACHE_FILE = API_DATA_DIR . "/market.json";
+const API_PIPELINE_LOCK_FILE = API_DATA_DIR . "/pipeline.lock";
+
 const CATEGORY_CONFIG = [
     [
         "slug" => "trending",
@@ -81,45 +124,74 @@ function app_config(): array
 
     $default = [
         "serviceName" => "mediababa-php",
-        "schedulerCron" => "*/30 * * * *",
-        "ingestLimitPerCategory" => 5,
+        "schedulerCron" => "*/10 * * * *",
+        "ingestLimitPerCategory" => 15,
+        "ingestMaxAgeHours" => 72,
         "storiesMaxAgeDays" => 7,
         "autoPublish" => true,
         "defaultCountryCode" => "in",
+        // Optional. NewsAPI's free plan is for development only, so it stays off unless a key is set.
         "newsApiKey" => "",
-        "alphaVantageApiKey" => "",
         "newsApiDailyRequestLimit" => 25,
-        "alphaVantageDailyRequestLimit" => 25,
+        // Secret for forcing a pipeline run (header X-Pipeline-Token). Leave empty to allow only cooldown-limited refreshes.
+        "pipelineToken" => "",
+        // A public refresh (visitor or Refresh button) only runs when the last run is older than this.
+        "staleRefreshMinutes" => 10,
+        // Market ticker cache lifetime.
+        "marketCacheSeconds" => 60,
+        // Optional: Google Sheets "Publish to web" CSV URL with GOOGLEFINANCE quotes (see api/README.md).
+        "marketSheetCsvUrl" => "",
+        // Optional: replace the built-in publisher feed list (same shape as PUBLISHER_FEEDS).
+        "publisherFeeds" => null,
     ];
 
+    $local = [];
     $localPath = API_ROOT . "/config.local.php";
     if (is_file($localPath)) {
-        $local = require $localPath;
-        if (is_array($local)) {
-            $config = array_merge($default, $local);
-            $config["ingestLimitPerCategory"] = max(1, (int) ($config["ingestLimitPerCategory"] ?? 5));
-            $config["storiesMaxAgeDays"] = sanitize_max_age_days($config["storiesMaxAgeDays"] ?? 7);
-            $config["defaultCountryCode"] = sanitize_country_code((string) ($config["defaultCountryCode"] ?? "in"));
-            $config["newsApiKey"] = trim((string) ($config["newsApiKey"] ?? ""));
-            $config["alphaVantageApiKey"] = trim((string) ($config["alphaVantageApiKey"] ?? ""));
-            $config["newsApiDailyRequestLimit"] = max(1, (int) ($config["newsApiDailyRequestLimit"] ?? 25));
-            $config["alphaVantageDailyRequestLimit"] = max(1, (int) ($config["alphaVantageDailyRequestLimit"] ?? 25));
-            return $config;
+        $loaded = require $localPath;
+        if (is_array($loaded)) {
+            $local = $loaded;
         }
     }
 
-    $config = [
-        "serviceName" => getenv("SERVICE_NAME") ?: $default["serviceName"],
-        "schedulerCron" => getenv("SCHEDULER_CRON") ?: $default["schedulerCron"],
-        "ingestLimitPerCategory" => (int) (getenv("INGEST_LIMIT_PER_CATEGORY") ?: $default["ingestLimitPerCategory"]),
-        "storiesMaxAgeDays" => sanitize_max_age_days(getenv("STORIES_MAX_AGE_DAYS") ?: $default["storiesMaxAgeDays"]),
-        "autoPublish" => strtolower((string) (getenv("AUTO_PUBLISH") ?: ($default["autoPublish"] ? "true" : "false"))) === "true",
-        "defaultCountryCode" => sanitize_country_code(getenv("DEFAULT_COUNTRY_CODE") ?: $default["defaultCountryCode"]),
-        "newsApiKey" => trim((string) (getenv("NEWS_API_KEY") ?: "")),
-        "alphaVantageApiKey" => trim((string) (getenv("ALPHA_VANTAGE_API_KEY") ?: "")),
-        "newsApiDailyRequestLimit" => max(1, (int) (getenv("NEWS_API_DAILY_REQUEST_LIMIT") ?: $default["newsApiDailyRequestLimit"])),
-        "alphaVantageDailyRequestLimit" => max(1, (int) (getenv("ALPHA_VANTAGE_DAILY_REQUEST_LIMIT") ?: $default["alphaVantageDailyRequestLimit"])),
+    $env = [];
+    $envMap = [
+        "serviceName" => "SERVICE_NAME",
+        "schedulerCron" => "SCHEDULER_CRON",
+        "ingestLimitPerCategory" => "INGEST_LIMIT_PER_CATEGORY",
+        "ingestMaxAgeHours" => "INGEST_MAX_AGE_HOURS",
+        "storiesMaxAgeDays" => "STORIES_MAX_AGE_DAYS",
+        "autoPublish" => "AUTO_PUBLISH",
+        "defaultCountryCode" => "DEFAULT_COUNTRY_CODE",
+        "newsApiKey" => "NEWS_API_KEY",
+        "newsApiDailyRequestLimit" => "NEWS_API_DAILY_REQUEST_LIMIT",
+        "pipelineToken" => "PIPELINE_TOKEN",
+        "staleRefreshMinutes" => "STALE_REFRESH_MINUTES",
+        "marketCacheSeconds" => "MARKET_CACHE_SECONDS",
+        "marketSheetCsvUrl" => "MARKET_SHEET_CSV_URL",
     ];
+    foreach ($envMap as $key => $envName) {
+        $value = getenv($envName);
+        if ($value !== false && $value !== "") {
+            $env[$key] = $value;
+        }
+    }
+
+    $config = array_merge($default, $env, $local);
+    $config["ingestLimitPerCategory"] = max(1, min(50, (int) $config["ingestLimitPerCategory"]));
+    $config["ingestMaxAgeHours"] = max(1, (int) $config["ingestMaxAgeHours"]);
+    $config["storiesMaxAgeDays"] = sanitize_max_age_days($config["storiesMaxAgeDays"]);
+    $config["autoPublish"] = is_bool($config["autoPublish"])
+        ? $config["autoPublish"]
+        : strtolower((string) $config["autoPublish"]) === "true";
+    $config["defaultCountryCode"] = sanitize_country_code((string) $config["defaultCountryCode"]);
+    $config["newsApiKey"] = trim((string) $config["newsApiKey"]);
+    $config["newsApiDailyRequestLimit"] = max(1, (int) $config["newsApiDailyRequestLimit"]);
+    $config["pipelineToken"] = trim((string) $config["pipelineToken"]);
+    $config["staleRefreshMinutes"] = max(2, (int) $config["staleRefreshMinutes"]);
+    $config["marketCacheSeconds"] = max(15, (int) $config["marketCacheSeconds"]);
+    $config["marketSheetCsvUrl"] = trim((string) $config["marketSheetCsvUrl"]);
+    $config["publisherFeeds"] = is_array($config["publisherFeeds"]) ? $config["publisherFeeds"] : PUBLISHER_FEEDS;
 
     return $config;
 }
@@ -441,7 +513,7 @@ function fetch_newsapi_items(array $category, int $limit, string $countryCode, a
             "title" => trim((string) ($article["title"] ?? "Untitled story")),
             "summary" => trim((string) (($article["description"] ?? "") !== "" ? $article["description"] : ($article["content"] ?? ""))),
             "sourceUrl" => $sourceUrl,
-            "publishedAt" => trim((string) ($article["publishedAt"] ?? now_iso())),
+            "publishedAt" => normalize_published_at((string) ($article["publishedAt"] ?? "")),
             "marketSignal" => null,
             "relevanceScore" => 0.8,
             "rawPayload" => json_encode($article, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -452,49 +524,171 @@ function fetch_newsapi_items(array $category, int $limit, string $countryCode, a
     return $results;
 }
 
-function fetch_alpha_vantage_signal(array $category, string $countryCode, array $config): array
+function normalize_published_at(string $raw): string
 {
-    if (($config["alphaVantageApiKey"] ?? "") === "") {
+    $raw = trim($raw);
+    if ($raw === "") {
+        return now_iso();
+    }
+
+    $ts = strtotime($raw);
+    if ($ts === false) {
+        return now_iso();
+    }
+
+    // Guard against feeds that post future-dated items.
+    return gmdate("c", min($ts, time()));
+}
+
+function extract_feed_image(SimpleXMLElement $item): ?string
+{
+    $media = $item->children("http://search.yahoo.com/mrss/");
+    if (isset($media->content)) {
+        foreach ($media->content as $content) {
+            $url = trim((string) ($content->attributes()["url"] ?? ""));
+            if ($url !== "") {
+                return $url;
+            }
+        }
+    }
+    if (isset($media->thumbnail)) {
+        $url = trim((string) ($media->thumbnail->attributes()["url"] ?? ""));
+        if ($url !== "") {
+            return $url;
+        }
+    }
+    if (isset($item->enclosure)) {
+        $attrs = $item->enclosure->attributes();
+        $type = strtolower((string) ($attrs["type"] ?? ""));
+        $url = trim((string) ($attrs["url"] ?? ""));
+        if ($url !== "" && ($type === "" || strpos($type, "image") === 0)) {
+            return $url;
+        }
+    }
+
+    $description = (string) ($item->description ?? "");
+    if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $description, $match) === 1) {
+        return html_entity_decode($match[1], ENT_QUOTES);
+    }
+
+    return null;
+}
+
+function clean_feed_text(string $value): string
+{
+    $value = html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, "UTF-8");
+    $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+    return trim($value);
+}
+
+/**
+ * Parses an RSS 2.0 or Atom document into a flat list of entries.
+ */
+function parse_feed_entries(string $body): array
+{
+    $previous = libxml_use_internal_errors(true);
+    $xml = simplexml_load_string($body, "SimpleXMLElement", LIBXML_NOCDATA);
+    libxml_clear_errors();
+    libxml_use_internal_errors($previous);
+
+    if ($xml === false) {
         return [];
     }
 
-    $normalizedCountryCode = sanitize_country_code($countryCode);
-    if ($normalizedCountryCode !== "in") {
-        return [];
+    $entries = [];
+
+    if (isset($xml->channel->item)) {
+        foreach ($xml->channel->item as $item) {
+            $entries[] = [
+                "title" => clean_feed_text((string) ($item->title ?? "")),
+                "link" => trim((string) ($item->link ?? "")),
+                "description" => clean_feed_text((string) ($item->description ?? "")),
+                "pubDate" => trim((string) ($item->pubDate ?? "")),
+                "sourceName" => trim((string) ($item->source ?? "")),
+                "image" => extract_feed_image($item),
+            ];
+        }
+        return $entries;
     }
 
-    $payload = http_get_json(
-        "https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=" . rawurlencode((string) $config["alphaVantageApiKey"]),
-        [],
-        25
-    );
+    if (isset($xml->entry)) {
+        foreach ($xml->entry as $entry) {
+            $link = "";
+            foreach ($entry->link as $linkNode) {
+                $rel = (string) ($linkNode->attributes()["rel"] ?? "alternate");
+                if ($rel === "alternate") {
+                    $link = trim((string) ($linkNode->attributes()["href"] ?? ""));
+                    break;
+                }
+            }
+            $entries[] = [
+                "title" => clean_feed_text((string) ($entry->title ?? "")),
+                "link" => $link,
+                "description" => clean_feed_text((string) ($entry->summary ?? $entry->content ?? "")),
+                "pubDate" => trim((string) ($entry->updated ?? $entry->published ?? "")),
+                "sourceName" => "",
+                "image" => null,
+            ];
+        }
+    }
 
-    $gainers = is_array($payload["top_gainers"] ?? null) ? array_slice($payload["top_gainers"], 0, 3) : [];
+    return $entries;
+}
+
+function feed_entries_to_source_items(array $entries, array $category, string $countryCode, string $provider, string $defaultSourceName, float $relevance, array $config): array
+{
+    $maxAgeSeconds = (int) $config["ingestMaxAgeHours"] * 3600;
     $results = [];
 
-    foreach ($gainers as $index => $item) {
-        if (!is_array($item)) {
+    foreach ($entries as $entry) {
+        $title = (string) ($entry["title"] ?? "");
+        $link = (string) ($entry["link"] ?? "");
+        if ($title === "" || $link === "") {
             continue;
         }
 
-        $ticker = trim((string) ($item["ticker"] ?? ("TICKER-" . $index)));
-        if ($ticker === "") {
-            $ticker = "TICKER-" . $index;
+        $publishedAt = normalize_published_at((string) ($entry["pubDate"] ?? ""));
+        if (time() - (int) strtotime($publishedAt) > $maxAgeSeconds) {
+            continue;
         }
 
+        $sourceName = (string) ($entry["sourceName"] ?? "") !== "" ? (string) $entry["sourceName"] : $defaultSourceName;
+
+        // Google News titles end with " - Publisher"; strip it for cleaner headlines.
+        if ($provider === "rss" && $sourceName !== "") {
+            $suffix = " - " . $sourceName;
+            if (substr($title, -strlen($suffix)) === $suffix) {
+                $title = trim(substr($title, 0, -strlen($suffix)));
+            }
+        }
+
+        $description = (string) ($entry["description"] ?? "");
+        if ($provider === "rss") {
+            // Google News descriptions only repeat the headline and publisher.
+            $description = "";
+        }
+
+        $payload = [
+            "title" => $title,
+            "link" => $link,
+            "description" => $description,
+            "pubDate" => (string) ($entry["pubDate"] ?? ""),
+            "source" => ["name" => $sourceName],
+            "image" => $entry["image"] ?? null,
+        ];
+
         $results[] = [
-            "externalId" => sha1("alphavantage:" . $ticker . ":" . gmdate("Y-m-d")),
-            "provider" => "alphavantage",
-            "countryCode" => $normalizedCountryCode,
+            "externalId" => sha1($provider . ":" . $link),
+            "provider" => $provider,
+            "countryCode" => $countryCode,
             "categorySlug" => $category["slug"],
-            "title" => $ticker . " leads market momentum",
-            "summary" => $ticker . " moved " . ((string) ($item["change_percentage"] ?? "N/A")) . " with volume " . ((string) ($item["volume"] ?? "N/A")) . ".",
-            // AlphaVantage top gainers/losers is a market snapshot; no article permalink is available.
-            "sourceUrl" => "",
-            "publishedAt" => now_iso(),
-            "marketSignal" => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            "relevanceScore" => 0.7,
-            "rawPayload" => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            "title" => $title,
+            "summary" => $description,
+            "sourceUrl" => $link,
+            "publishedAt" => $publishedAt,
+            "marketSignal" => null,
+            "relevanceScore" => $relevance,
+            "rawPayload" => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             "ingestionStatus" => "ingested",
         ];
     }
@@ -502,10 +696,49 @@ function fetch_alpha_vantage_signal(array $category, string $countryCode, array 
     return $results;
 }
 
-function fetch_rss_items(array $category, int $limit, string $countryCode): array
+function fetch_publisher_items(array $category, string $countryCode, array $config, array &$errors): array
+{
+    if ($countryCode !== "in") {
+        return [];
+    }
+
+    $feeds = $config["publisherFeeds"][$category["slug"]] ?? [];
+    $results = [];
+
+    foreach ($feeds as $feed) {
+        $url = (string) ($feed["url"] ?? "");
+        $name = (string) ($feed["name"] ?? "Publisher");
+        if ($url === "") {
+            continue;
+        }
+
+        try {
+            $response = http_get($url, ["Accept: application/rss+xml, application/xml, text/xml"], 15);
+            if ($response["status"] < 200 || $response["status"] >= 300) {
+                $errors[] = "Feed " . $name . " returned HTTP " . $response["status"];
+                continue;
+            }
+            $entries = parse_feed_entries($response["body"]);
+            if (count($entries) === 0) {
+                $errors[] = "Feed " . $name . " returned no parsable items";
+                continue;
+            }
+            $results = array_merge(
+                $results,
+                feed_entries_to_source_items($entries, $category, $countryCode, "publisher", $name, 0.8, $config)
+            );
+        } catch (Throwable $error) {
+            $errors[] = "Feed " . $name . " failed: " . $error->getMessage();
+        }
+    }
+
+    return $results;
+}
+
+function fetch_rss_items(array $category, int $limit, string $countryCode, array $config): array
 {
     $normalizedCountryCode = sanitize_country_code($countryCode);
-    $query = build_country_aware_query($category, $normalizedCountryCode);
+    $query = build_country_aware_query($category, $normalizedCountryCode) . " when:1d";
 
     $rssCountryMap = [
         "in" => ["gl" => "IN", "ceid" => "IN:en"],
@@ -526,98 +759,66 @@ function fetch_rss_items(array $category, int $limit, string $countryCode): arra
         "ceid" => $targetGeo["ceid"],
     ]);
 
-    $response = http_get($url, [], 25);
+    $response = http_get($url, [], 20);
     if ($response["status"] < 200 || $response["status"] >= 300) {
-        return [];
+        throw new RuntimeException("Google News RSS returned HTTP " . $response["status"]);
     }
 
-    $xml = @simplexml_load_string($response["body"]);
-    if ($xml === false || !isset($xml->channel->item)) {
-        return [];
-    }
+    $entries = array_slice(parse_feed_entries($response["body"]), 0, $limit * 2);
+    return feed_entries_to_source_items($entries, $category, $normalizedCountryCode, "rss", "Google News", 0.74, $config);
+}
 
-    $results = [];
-    foreach ($xml->channel->item as $item) {
-        if (count($results) >= $limit) {
-            break;
-        }
-
-        $title = trim((string) ($item->title ?? "Untitled story"));
-        $link = trim((string) ($item->link ?? ""));
-        if ($link === "") {
-            continue;
-        }
-
-        $description = trim(strip_tags((string) ($item->description ?? "")));
-        $pubDate = trim((string) ($item->pubDate ?? ""));
-        $publishedAt = $pubDate !== "" ? date(DATE_ATOM, strtotime($pubDate)) : now_iso();
-
-        $payload = [
-            "title" => $title,
-            "link" => $link,
-            "description" => $description,
-            "pubDate" => $pubDate,
-        ];
-
-        $results[] = [
-            "externalId" => sha1("rss:" . $link),
-            "provider" => "rss",
-            "countryCode" => $normalizedCountryCode,
-            "categorySlug" => $category["slug"],
-            "title" => $title,
-            "summary" => $description,
-            "sourceUrl" => $link,
-            "publishedAt" => $publishedAt,
-            "marketSignal" => null,
-            "relevanceScore" => 0.68,
-            "rawPayload" => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            "ingestionStatus" => "ingested",
-        ];
-    }
-
-    return $results;
+function headline_fingerprint(string $title): string
+{
+    $normalized = strtolower($title);
+    $normalized = preg_replace('/[^a-z0-9 ]+/', ' ', $normalized) ?? $normalized;
+    $words = array_values(array_filter(explode(" ", $normalized), static fn(string $w): bool => strlen($w) > 2));
+    return implode(" ", array_slice($words, 0, 6));
 }
 
 function fetch_source_items_for_category(array $category, int $limit, string $countryCode, array $config): array
 {
     $errors = [];
-    $newsItems = [];
-    $marketItems = [];
+    $items = [];
 
+    // 1) Direct publisher feeds (free, fastest to update).
+    $items = array_merge($items, fetch_publisher_items($category, $countryCode, $config, $errors));
+
+    // 2) Google News search feed (free) for broader coverage.
     try {
-        $newsItems = fetch_newsapi_items($category, $limit, $countryCode, $config);
+        $items = array_merge($items, fetch_rss_items($category, $limit, $countryCode, $config));
     } catch (Throwable $error) {
-        $errors[] = "News provider failed for " . $category["slug"] . ": " . $error->getMessage();
+        $errors[] = "Google News RSS failed for " . $category["slug"] . ": " . $error->getMessage();
     }
 
+    // 3) Optional NewsAPI, only when a key is configured.
     try {
-        $marketItems = fetch_alpha_vantage_signal($category, $countryCode, $config);
+        $items = array_merge($items, fetch_newsapi_items($category, $limit, $countryCode, $config));
     } catch (Throwable $error) {
-        $errors[] = "Market provider failed for " . $category["slug"] . ": " . $error->getMessage();
+        $errors[] = "NewsAPI failed for " . $category["slug"] . ": " . $error->getMessage();
     }
 
-    $combined = array_merge($newsItems, $marketItems);
-    if (count($combined) > 0) {
-        return [
-            "items" => $combined,
-            "errors" => $errors,
-        ];
-    }
+    // Newest first, then drop duplicate headlines across sources.
+    usort($items, static function (array $a, array $b): int {
+        return strcmp((string) $b["publishedAt"], (string) $a["publishedAt"]);
+    });
 
-    try {
-        $rssItems = fetch_rss_items($category, $limit, $countryCode);
-        if (count($rssItems) > 0) {
-            return [
-                "items" => $rssItems,
-                "errors" => $errors,
-            ];
+    $seen = [];
+    $unique = [];
+    foreach ($items as $item) {
+        $fingerprint = headline_fingerprint((string) $item["title"]);
+        if ($fingerprint === "" || isset($seen[$fingerprint])) {
+            continue;
         }
-    } catch (Throwable $error) {
-        $errors[] = "RSS fallback failed for " . $category["slug"] . ": " . $error->getMessage();
+        $seen[$fingerprint] = true;
+        $unique[] = $item;
+        if (count($unique) >= $limit) {
+            break;
+        }
     }
 
     return [
-        "items" => [],
+        "items" => $unique,
         "errors" => $errors,
     ];
 }
@@ -636,7 +837,7 @@ function to_credibility_score(string $provider, $relevanceScore): float
 {
     $providerScores = [
         "newsapi" => 0.78,
-        "alphavantage" => 0.84,
+        "publisher" => 0.8,
         "rss" => 0.74,
         "mock" => 0.45,
     ];
@@ -683,7 +884,7 @@ function generate_story_from_source(array $sourceItem, array $config): array
     $headline = trim((string) ($sourceItem["title"] ?? "Untitled story"));
     $summary = trim((string) ($sourceItem["summary"] ?? ""));
     if ($summary === "") {
-        $summary = "Latest " . $categoryLabel . " update sourced from market/news feeds.";
+        $summary = "Latest " . $categoryLabel . " update. Open the source for the full story.";
     }
 
     $slugBase = substr(slugify($headline), 0, 80);
@@ -703,19 +904,14 @@ function generate_story_from_source(array $sourceItem, array $config): array
     $countryCode = sanitize_country_code((string) ($sourceItem["countryCode"] ?? "in"));
     $countryLabel = COUNTRY_LABEL_BY_CODE[$countryCode] ?? strtoupper($countryCode);
 
-    $publishedAt = ($config["autoPublish"] ?? true)
-        ? $now
-        : ((string) ($sourceItem["publishedAt"] ?? $now));
+    // Always keep the source's own publish time so re-runs never reshuffle older stories to the top.
+    $publishedAt = normalize_published_at((string) ($sourceItem["publishedAt"] ?? ""));
 
-    $storyBody = implode("\n\n", [
-        "This automated story was generated for the " . $categoryLabel . " desk based on the latest source feed item.",
-        "Source headline: " . $headline,
-        "Key context: " . $summary,
-        !empty($sourceItem["marketSignal"])
-            ? "Market signal snapshot: " . (string) $sourceItem["marketSignal"]
-            : "No additional market-signal payload was attached to this source item.",
-        "Editorial note: this is phase-1 auto-generated content. Add review workflows and model-based summarization before production publishing.",
-    ]);
+    $sourceName = trim((string) ($payload["source"]["name"] ?? $providerLabel));
+    $storyBody = implode("\n\n", array_filter([
+        $summary,
+        "Source: " . $sourceName . ". Read the full report at the original publisher for complete details.",
+    ]));
 
     return [
         "source_item_id" => (int) ($sourceItem["id"] ?? 0),
@@ -724,8 +920,8 @@ function generate_story_from_source(array $sourceItem, array $config): array
         "headline" => $headline,
         "summary" => $summary,
         "story_body" => $storyBody,
-        "author_name" => trim((string) ($payload["author"] ?? ($providerLabel . " Desk"))),
-        "organization_name" => trim((string) ($payload["source"]["name"] ?? $providerLabel)),
+        "author_name" => trim((string) ($payload["author"] ?? ($sourceName . " Desk"))),
+        "organization_name" => $sourceName,
         "location" => trim((string) ($payload["location"] ?? $countryLabel)),
         "source_credibility_score" => $credibility,
         "featured_media_url" => $featuredMediaUrl,
@@ -834,8 +1030,9 @@ function upsert_generated_story(array &$store, array $story): array
             "generation_model" => (string) ($story["generation_model"] ?? "rules-v1"),
             "generation_status" => (string) ($story["generation_status"] ?? "generated"),
             "editorial_status" => (string) ($story["editorial_status"] ?? "published"),
-            "published_at" => (string) ($story["published_at"] ?? $now),
-            "updated_at" => (string) ($story["updated_at"] ?? $now),
+            // Never move an existing story's publish time; only refresh its content and updated_at.
+            "published_at" => (string) ($existing["published_at"] ?? ($story["published_at"] ?? $now)),
+            "updated_at" => $now,
         ]);
 
         return [
@@ -962,6 +1159,11 @@ function run_pipeline(array $input = []): array
                 "finishedAt" => now_iso(),
                 "stats" => $stats,
             ];
+            trim_job_runs($store);
+            if ($categorySlug === null) {
+                $store["meta"]["lastFullPipelineRunAt"] = now_iso();
+            }
+            $store["meta"]["lastPipelineRunAt"] = now_iso();
         });
 
         foreach ($providerErrors as $providerError) {
@@ -985,10 +1187,100 @@ function run_pipeline(array $input = []): array
                 "finishedAt" => now_iso(),
                 "stats" => $stats,
             ];
+            trim_job_runs($store);
+            // Record the attempt so a failing source does not trigger a retry on every request.
+            $store["meta"]["lastPipelineRunAt"] = now_iso();
         });
 
         throw $error;
     }
+}
+
+function trim_job_runs(array &$store, int $keep = 200): void
+{
+    if (count($store["job_runs"]) > $keep) {
+        $store["job_runs"] = array_values(array_slice($store["job_runs"], -$keep));
+    }
+}
+
+function last_pipeline_run_at(): ?string
+{
+    $snapshot = read_store_snapshot();
+    $value = $snapshot["meta"]["lastFullPipelineRunAt"] ?? ($snapshot["meta"]["lastPipelineRunAt"] ?? null);
+    return is_string($value) && $value !== "" ? $value : null;
+}
+
+function minutes_since_last_run(): ?float
+{
+    $last = last_pipeline_run_at();
+    if ($last === null) {
+        return null;
+    }
+    $ts = strtotime($last);
+    return $ts === false ? null : (time() - $ts) / 60;
+}
+
+function is_pipeline_stale(): bool
+{
+    $minutes = minutes_since_last_run();
+    return $minutes === null || $minutes >= (float) app_config()["staleRefreshMinutes"];
+}
+
+/**
+ * Runs the pipeline only if no other run is in progress. Returns null when skipped.
+ */
+function run_pipeline_exclusive(array $input = []): ?array
+{
+    ensure_store_file();
+    @set_time_limit(180);
+
+    $fp = fopen(API_PIPELINE_LOCK_FILE, "c");
+    if ($fp === false) {
+        return run_pipeline($input);
+    }
+
+    try {
+        if (!flock($fp, LOCK_EX | LOCK_NB)) {
+            return null;
+        }
+        try {
+            return run_pipeline($input);
+        } finally {
+            flock($fp, LOCK_UN);
+        }
+    } finally {
+        fclose($fp);
+    }
+}
+
+/**
+ * Lazy refresh: after the response is sent, run a full pipeline if the feed is stale.
+ * This keeps the site fresh between cron runs without any paid service.
+ */
+function schedule_refresh_if_stale(): void
+{
+    if (PHP_SAPI === "cli" || !is_pipeline_stale()) {
+        return;
+    }
+
+    register_shutdown_function(static function (): void {
+        if (function_exists("fastcgi_finish_request")) {
+            fastcgi_finish_request();
+        } elseif (function_exists("litespeed_finish_request")) {
+            litespeed_finish_request();
+        } else {
+            // Cannot detach from the visitor's request on this server; let cron handle it.
+            return;
+        }
+        ignore_user_abort(true);
+        try {
+            run_pipeline_exclusive([
+                "countryCode" => app_config()["defaultCountryCode"],
+            ]);
+        } catch (Throwable $error) {
+            log_warning("Lazy refresh failed: " . $error->getMessage());
+        }
+    });
 }
 
 function list_job_runs($limit = null): array
@@ -1162,50 +1454,34 @@ function list_provider_usage(): array
 {
     $config = app_config();
     $snapshot = read_store_snapshot();
-
     $todayStartTs = strtotime(gmdate("Y-m-d") . " 00:00:00 UTC");
-    $todayEndTs = strtotime(gmdate("Y-m-d") . " 23:59:59 UTC");
 
-    $usedByProvider = [
-        "newsapi" => 0,
-        "alphavantage" => 0,
-    ];
-
+    $counts = ["publisher" => 0, "rss" => 0, "newsapi" => 0];
     foreach ($snapshot["source_items"] as $item) {
         $provider = strtolower((string) ($item["provider"] ?? ""));
-        if (!array_key_exists($provider, $usedByProvider)) {
+        if (!array_key_exists($provider, $counts)) {
             continue;
         }
-
-        $publishedAt = (string) ($item["published_at"] ?? $item["created_at"] ?? "");
-        $publishedTs = strtotime($publishedAt);
-        if ($publishedTs === false) {
-            continue;
+        $createdTs = strtotime((string) ($item["created_at"] ?? ""));
+        if ($createdTs !== false && $createdTs >= $todayStartTs) {
+            $counts[$provider] += 1;
         }
-
-        if ($publishedTs < $todayStartTs || $publishedTs > $todayEndTs) {
-            continue;
-        }
-
-        $usedByProvider[$provider] += 1;
     }
 
-    $limits = [
-        "newsapi" => max(1, (int) ($config["newsApiDailyRequestLimit"] ?? 25)),
-        "alphavantage" => max(1, (int) ($config["alphaVantageDailyRequestLimit"] ?? 25)),
+    // Publisher feeds and Google News RSS are free with no daily quota.
+    $providers = [
+        ["provider" => "publisher", "used" => $counts["publisher"], "limit" => null, "remaining" => null, "capped" => false],
+        ["provider" => "rss", "used" => $counts["rss"], "limit" => null, "remaining" => null, "capped" => false],
     ];
 
-    $providers = [];
-    foreach ($usedByProvider as $provider => $used) {
-        $limit = $limits[$provider] ?? 25;
-        $remaining = max(0, $limit - $used);
-
+    if ($config["newsApiKey"] !== "") {
+        $limit = (int) $config["newsApiDailyRequestLimit"];
         $providers[] = [
-            "provider" => $provider,
-            "used" => $used,
+            "provider" => "newsapi",
+            "used" => $counts["newsapi"],
             "limit" => $limit,
-            "remaining" => $remaining,
-            "capped" => $used >= $limit,
+            "remaining" => max(0, $limit - $counts["newsapi"]),
+            "capped" => $counts["newsapi"] >= $limit,
         ];
     }
 
@@ -1289,4 +1565,176 @@ function record_read_click(int $storyId, string $action): array
 
         return $current;
     });
+}
+
+/* -------------------------------------------------------------------------
+ * Market ticker (free sources, cached)
+ * ---------------------------------------------------------------------- */
+
+function parse_number($value): ?float
+{
+    if (is_int($value) || is_float($value)) {
+        return (float) $value;
+    }
+    $clean = str_replace([",", "%", " "], "", trim((string) $value));
+    return is_numeric($clean) ? (float) $clean : null;
+}
+
+/**
+ * Reads a Google Sheet published as CSV with columns:
+ * symbol, name, price, change, changePercent
+ */
+function fetch_market_from_sheet(string $csvUrl): array
+{
+    $response = http_get($csvUrl, [], 15);
+    if ($response["status"] < 200 || $response["status"] >= 300) {
+        throw new RuntimeException("Sheet CSV returned HTTP " . $response["status"]);
+    }
+
+    $lines = preg_split('/\r\n|\n|\r/', trim($response["body"])) ?: [];
+    $quotes = [];
+    foreach ($lines as $index => $line) {
+        $cols = str_getcsv($line);
+        if ($index === 0 && !is_numeric(str_replace(",", "", (string) ($cols[2] ?? "")))) {
+            continue; // header row
+        }
+        $price = parse_number($cols[2] ?? null);
+        if ($price === null) {
+            continue;
+        }
+        $change = parse_number($cols[3] ?? null) ?? 0.0;
+        $changePercent = parse_number($cols[4] ?? null);
+        if ($changePercent === null) {
+            $previous = $price - $change;
+            $changePercent = $previous != 0.0 ? ($change / $previous) * 100 : 0.0;
+        }
+        $quotes[] = [
+            "symbol" => trim((string) ($cols[0] ?? "")),
+            "name" => trim((string) ($cols[1] ?? ($cols[0] ?? ""))),
+            "price" => round($price, 2),
+            "change" => round($change, 2),
+            "changePercent" => round($changePercent, 2),
+        ];
+    }
+
+    return $quotes;
+}
+
+/**
+ * Yahoo Finance public chart endpoint. Free and keyless, but unofficial and may rate-limit.
+ */
+function fetch_market_from_yahoo(): array
+{
+    $quotes = [];
+    foreach (MARKET_SYMBOLS as $entry) {
+        $url = "https://query1.finance.yahoo.com/v8/finance/chart/" . rawurlencode($entry["symbol"])
+            . "?interval=1d&range=1d";
+        try {
+            $payload = http_get_json($url, ["Accept: application/json"], 10);
+        } catch (Throwable $error) {
+            log_warning("Market quote failed for " . $entry["symbol"] . ": " . $error->getMessage());
+            continue;
+        }
+        $meta = $payload["chart"]["result"][0]["meta"] ?? null;
+        if (!is_array($meta)) {
+            continue;
+        }
+        $price = parse_number($meta["regularMarketPrice"] ?? null);
+        $previous = parse_number($meta["chartPreviousClose"] ?? ($meta["previousClose"] ?? null));
+        if ($price === null) {
+            continue;
+        }
+        $change = $previous !== null ? $price - $previous : 0.0;
+        $quotes[] = [
+            "symbol" => $entry["symbol"],
+            "name" => $entry["name"],
+            "price" => round($price, 2),
+            "change" => round($change, 2),
+            "changePercent" => $previous ? round(($change / $previous) * 100, 2) : 0.0,
+        ];
+    }
+
+    return $quotes;
+}
+
+function is_indian_market_open(?int $timestamp = null): bool
+{
+    $now = new DateTimeImmutable("@" . ($timestamp ?? time()));
+    $ist = $now->setTimezone(new DateTimeZone("Asia/Kolkata"));
+    $day = (int) $ist->format("N");
+    if ($day >= 6) {
+        return false;
+    }
+    $minutes = (int) $ist->format("G") * 60 + (int) $ist->format("i");
+    return $minutes >= 9 * 60 + 15 && $minutes <= 15 * 60 + 30;
+}
+
+function get_market_snapshot(): array
+{
+    $config = app_config();
+    ensure_store_file();
+
+    $cached = null;
+    if (is_file(API_MARKET_CACHE_FILE)) {
+        $decoded = json_decode((string) @file_get_contents(API_MARKET_CACHE_FILE), true);
+        if (is_array($decoded) && isset($decoded["fetchedAt"], $decoded["quotes"])) {
+            $cached = $decoded;
+        }
+    }
+
+    $marketOpen = is_indian_market_open();
+    // Outside market hours prices do not move, so cache longer.
+    $ttl = $marketOpen ? (int) $config["marketCacheSeconds"] : 15 * 60;
+
+    if ($cached !== null && time() - (int) strtotime((string) $cached["fetchedAt"]) < $ttl) {
+        return array_merge($cached, ["marketOpen" => $marketOpen, "stale" => false]);
+    }
+
+    // Only one request refreshes the cache; others serve the cached copy.
+    $lock = fopen(API_MARKET_CACHE_FILE . ".lock", "c");
+    if ($lock !== false && !flock($lock, LOCK_EX | LOCK_NB)) {
+        fclose($lock);
+        if ($cached !== null) {
+            return array_merge($cached, ["marketOpen" => $marketOpen, "stale" => true]);
+        }
+        $lock = false;
+    }
+
+    try {
+        $quotes = [];
+        $source = "";
+        if ($config["marketSheetCsvUrl"] !== "") {
+            try {
+                $quotes = fetch_market_from_sheet($config["marketSheetCsvUrl"]);
+                $source = "Google Finance via Google Sheets (may be delayed up to 20 min)";
+            } catch (Throwable $error) {
+                log_warning("Market sheet failed: " . $error->getMessage());
+            }
+        }
+        if (count($quotes) === 0) {
+            $quotes = fetch_market_from_yahoo();
+            $source = "Yahoo Finance";
+        }
+
+        if (count($quotes) === 0) {
+            if ($cached !== null) {
+                return array_merge($cached, ["marketOpen" => $marketOpen, "stale" => true]);
+            }
+            return ["quotes" => [], "source" => null, "fetchedAt" => null, "marketOpen" => $marketOpen, "stale" => true];
+        }
+
+        $snapshot = [
+            "quotes" => $quotes,
+            "source" => $source,
+            "fetchedAt" => now_iso(),
+        ];
+        @file_put_contents(API_MARKET_CACHE_FILE, json_encode($snapshot, JSON_UNESCAPED_SLASHES), LOCK_EX);
+
+        return array_merge($snapshot, ["marketOpen" => $marketOpen, "stale" => false]);
+    } finally {
+        if ($lock !== false) {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
 }

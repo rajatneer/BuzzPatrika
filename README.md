@@ -68,12 +68,12 @@ Use this mode for basic shared plans that do not support a persistent Node proce
 2. Copy the build output (`index.html` and `assets/`) to the hosting web root (`public_html`).
 3. Upload the `api/` folder from this repository to `public_html/api`.
 4. Copy `api/config.local.example.php` to `api/config.local.php` and set keys.
-5. Add a cPanel cron job to execute `api/cron/run_pipeline.php` every 30 minutes.
+5. Add a cPanel cron job to execute `api/cron/run_pipeline.php` every 10 minutes (see `api/README.md` for the free news and market setup).
 
 Example cron command:
 
 ```bash
-/usr/local/bin/php /home/USERNAME/public_html/api/cron/run_pipeline.php > /dev/null 2>&1
+*/10 * * * * /usr/local/bin/php /home/USERNAME/public_html/api/cron/run_pipeline.php > /dev/null 2>&1
 ```
 
 ## Notes
@@ -91,6 +91,6 @@ Example cron command:
 - The frontend emits dynamic meta tags and JSON-LD (`NewsArticle`/`ItemList`) for better search discoverability.
 - API supports metadata-aware filtering via `tag`, `location`, and `minCredibility` query parameters.
 - API exposes provider limit usage via `/api/provider-usage` for admin dashboards.
-- If primary API providers are rate-limited, backend falls back to Google News RSS (live).
+- The PHP API uses only free sources: publisher RSS feeds, Google News RSS, and a cached market ticker (`/api/market`). See `api/README.md`.
 - Story responses keep historical published stories by default (use `maxAgeDays` query only when you want a freshness window).
 - Story generation in this phase is rules-based; next phase should add model-driven generation and moderation workflows.
