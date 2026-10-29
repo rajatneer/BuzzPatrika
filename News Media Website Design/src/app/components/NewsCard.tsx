@@ -1,4 +1,5 @@
 import { Clock, ArrowRight, TrendingUp } from 'lucide-react';
+import { ShareButtons } from './ShareButtons';
 
 export type ReadActionType = 'read-more' | 'read-full-story';
 
@@ -28,7 +29,13 @@ interface NewsCardProps {
   onReadActionClick?: (articleId: string, action: ReadActionType) => void;
 }
 
+export function getStoryPageUrl(slug: string): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/news/${encodeURIComponent(slug)}`;
+}
+
 export function NewsCard({ article, featured = false, onReadActionClick }: NewsCardProps) {
+  const storyUrl = getStoryPageUrl(article.slug);
   const credibility = `${Math.round(Math.max(0, Math.min(1, article.sourceCredibilityScore)) * 100)}%`;
   const topTags = article.tags.slice(0, 3);
   const trackReadAction = (action: ReadActionType) => {
@@ -106,7 +113,9 @@ export function NewsCard({ article, featured = false, onReadActionClick }: NewsC
               </span>
             </div>
             <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 line-clamp-2">
-              {article.title}
+              <a href={storyUrl} className="hover:underline decoration-2 underline-offset-4">
+                {article.title}
+              </a>
             </h2>
             <p className="text-white/90 text-sm line-clamp-2 mb-4">
               {article.description}
@@ -122,7 +131,10 @@ export function NewsCard({ article, featured = false, onReadActionClick }: NewsC
                 Credibility {credibility}
               </span>
             </div>
-            {readAction}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {readAction}
+              <ShareButtons url={storyUrl} title={article.title} tone="dark" />
+            </div>
           </div>
         </div>
       </article>
@@ -166,7 +178,7 @@ export function NewsCard({ article, featured = false, onReadActionClick }: NewsC
           </div>
 
           <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 group-hover:text-red-600 transition-colors">
-            {article.title}
+            <a href={storyUrl}>{article.title}</a>
           </h3>
 
           <p className="text-gray-600 text-sm line-clamp-3 mb-4 flex-1">
@@ -185,7 +197,7 @@ export function NewsCard({ article, featured = false, onReadActionClick }: NewsC
           </div>
 
           <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-            <span className="text-xs text-gray-500 font-medium">{article.source}</span>
+            <ShareButtons url={storyUrl} title={article.title} />
             {readMoreAction}
           </div>
         </div>

@@ -36,7 +36,6 @@ const PUBLISHER_FEEDS = [
         ["name" => "The Hindu", "url" => "https://www.thehindu.com/sport/feeder/default.rss"],
     ],
     "news" => [
-        ["name" => "PIB", "url" => "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3"],
         ["name" => "The Hindu", "url" => "https://www.thehindu.com/news/national/feeder/default.rss"],
     ],
 ];
@@ -141,6 +140,8 @@ function app_config(): array
         "marketCacheSeconds" => 60,
         // Optional: Google Sheets "Publish to web" CSV URL with GOOGLEFINANCE quotes (see api/README.md).
         "marketSheetCsvUrl" => "",
+        // Public site address used in story links, sitemaps and share links.
+        "siteUrl" => "https://buzzpatrika.com",
         // Optional: replace the built-in publisher feed list (same shape as PUBLISHER_FEEDS).
         "publisherFeeds" => null,
     ];
@@ -169,6 +170,7 @@ function app_config(): array
         "staleRefreshMinutes" => "STALE_REFRESH_MINUTES",
         "marketCacheSeconds" => "MARKET_CACHE_SECONDS",
         "marketSheetCsvUrl" => "MARKET_SHEET_CSV_URL",
+        "siteUrl" => "SITE_URL",
     ];
     foreach ($envMap as $key => $envName) {
         $value = getenv($envName);
@@ -191,6 +193,7 @@ function app_config(): array
     $config["staleRefreshMinutes"] = max(2, (int) $config["staleRefreshMinutes"]);
     $config["marketCacheSeconds"] = max(15, (int) $config["marketCacheSeconds"]);
     $config["marketSheetCsvUrl"] = trim((string) $config["marketSheetCsvUrl"]);
+    $config["siteUrl"] = rtrim(trim((string) $config["siteUrl"]), "/");
     $config["publisherFeeds"] = is_array($config["publisherFeeds"]) ? $config["publisherFeeds"] : PUBLISHER_FEEDS;
 
     return $config;
@@ -647,7 +650,11 @@ function feed_entries_to_source_items(array $entries, array $category, string $c
             continue;
         }
 
-        $publishedAt = normalize_published_at((string) ($entry["pubDate"] ?? ""));
+        // Skip undated items: without a real publish time they would always look like the latest news.
+        if (trim((string) ($entry["pubDate"] ?? "")) === "" || strtotime((string) $entry["pubDate"]) === false) {
+            continue;
+        }
+        $publishedAt = normalize_published_at((string) $entry["pubDate"]);
         if (time() - (int) strtotime($publishedAt) > $maxAgeSeconds) {
             continue;
         }
@@ -1737,4 +1744,48 @@ function get_market_snapshot(): array
             fclose($lock);
         }
     }
+}
+
+/* -------------------------------------------------------------------------
+ * Public story pages and sitemaps
+ * ---------------------------------------------------------------------- */
+
+function story_public_url(string $slug): string
+{
+    return app_config()["siteUrl"] . "/news/" . rawurlencode($slug);
+}
+
+/**
+ * Published stories, newest first, without the 100-row API cap (for sitemaps and listings).
+ */
+function list_published_story_rows(int $limit = 1000, ?string $category = null, int $offset = 0): array
+{
+    $snapshot = read_store_snapshot();
+    $sourceById = [];
+    foreach ($snapshot["source_items"] as $sourceItem) {
+        $sourceById[(int) ($sourceItem["id"] ?? 0)] = $sourceItem;
+    }
+
+    $rows = [];
+    foreach ($snapshot["generated_stories"] as $story) {
+        if ((string) ($story["editorial_status"] ?? "published") !== "published") {
+            continue;
+        }
+        if ($category !== null && $category !== "" && (string) ($story["category_slug"] ?? "") !== $category) {
+            continue;
+        }
+        $rows[] = to_story_row($story, $sourceById[(int) ($story["source_item_id"] ?? 0)] ?? null);
+    }
+
+    usort($rows, static function (array $a, array $b): int {
+        return strcmp((string) ($b["publishedAt"] ?? ""), (string) ($a["publishedAt"] ?? ""));
+    });
+
+    return array_slice($rows, max(0, $offset), max(1, $limit));
+}
+
+function find_story_by_slug(string $slug): ?array
+{
+    $rows = list_stories(["slug" => $slug, "status" => "published", "limit" => 1]);
+    return $rows[0] ?? null;
 }

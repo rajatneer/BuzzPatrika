@@ -421,7 +421,7 @@ export default function App() {
             name: article.location,
           }
           : undefined,
-        url: `${SITE_URL}/index.html?slug=${encodeURIComponent(article.slug)}`,
+        url: `${SITE_URL}/news/${encodeURIComponent(article.slug)}`,
       },
     }));
 

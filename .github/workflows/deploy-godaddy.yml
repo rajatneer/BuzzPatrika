@@ -51,6 +51,7 @@ jobs:
           cp -R "News Media Website Design/dist/." deploy/
           cp -R api deploy/api
           rm -f deploy/api/data/*.json deploy/api/data/*.lock deploy/api/logs/*.log deploy/api/config.local.php
+          cp -R news deploy/news
           if [ -d pages ]; then cp -R pages deploy/pages; fi
           if [ -f robots.txt ]; then cp robots.txt deploy/; fi
           if [ -f sitemap.xml ]; then cp sitemap.xml deploy/; fi
