@@ -1,0 +1,10 @@
+Options -MultiViews -Indexes
+RewriteEngine On
+RewriteBase /news/
+
+RewriteRule ^sitemap\.xml$ index.php?sitemap=all [L,QSA]
+RewriteRule ^news-sitemap\.xml$ index.php?sitemap=news [L,QSA]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-z0-9-]+)/?$ index.php?slug=$1 [L,QSA]
