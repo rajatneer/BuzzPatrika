@@ -847,9 +847,9 @@ export default function App() {
             <div>
               <h4 className="font-bold mb-3">Quick Links</h4>
               <div className="space-y-2 text-sm text-gray-400">
-                <p className="hover:text-white transition-colors cursor-pointer">About Us</p>
-                <p className="hover:text-white transition-colors cursor-pointer">Contact</p>
-                <p className="hover:text-white transition-colors cursor-pointer">Privacy Policy</p>
+                <p><a href="/news/" className="hover:text-white transition-colors">Latest News</a></p>
+                <p><a href="mailto:whorajatsachdeva@gmail.com" className="hover:text-white transition-colors">Contact</a></p>
+                <p><a href="/privacy/" className="hover:text-white transition-colors">Privacy Policy</a></p>
               </div>
             </div>
             <div>

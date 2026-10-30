@@ -178,7 +178,7 @@ function render_foot(): void
 {
     ?>
 </main>
-<footer>© <?= date("Y") ?> BuzzPatrika. Headlines link to the original publishers.</footer>
+<footer>© <?= date("Y") ?> BuzzPatrika. Headlines link to the original publishers. · <a href="/privacy/">Privacy Policy</a> · <a href="mailto:whorajatsachdeva@gmail.com">Contact</a></footer>
 <script>
   if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js").catch(function () {}); }
   document.querySelectorAll("[data-copy]").forEach(function (button) {
@@ -355,6 +355,7 @@ function render_sitemap(bool $newsOnly): void
     if (!$newsOnly) {
         echo '<url><loc>', h($config["siteUrl"] . "/"), '</loc><changefreq>always</changefreq><priority>1.0</priority></url>', "\n";
         echo '<url><loc>', h($config["siteUrl"] . "/news/"), '</loc><changefreq>always</changefreq><priority>0.9</priority></url>', "\n";
+        echo '<url><loc>', h($config["siteUrl"] . "/privacy/"), '</loc><changefreq>yearly</changefreq><priority>0.2</priority></url>', "\n";
         foreach (get_categories() as $cat) {
             echo '<url><loc>', h($config["siteUrl"] . "/news/?category=" . $cat["slug"]), '</loc><changefreq>hourly</changefreq><priority>0.8</priority></url>', "\n";
         }
